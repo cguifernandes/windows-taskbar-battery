@@ -1,4 +1,5 @@
-//! Registry-backed settings: start-with-Windows and the taskbar theme.
+//! Registry-backed settings: start-with-Windows and the taskbar theme (plus the Windows
+//! version, for diagnostics).
 
 use crate::wide;
 use std::ffi::c_void;
@@ -95,15 +96,30 @@ pub fn toggle_hidden(id: &str) {
     }
 }
 
+/// E.g. "Windows 11 24H2 build 26100.2033", for diagnostics.
+pub fn windows_version() -> String {
+    const KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+    let build: u32 = read_string_in(HKEY_LOCAL_MACHINE, KEY, "CurrentBuild").and_then(|b| b.parse().ok()).unwrap_or(0);
+    let ubr = read_dword_in(HKEY_LOCAL_MACHINE, KEY, "UBR").unwrap_or(0);
+    let release = read_string_in(HKEY_LOCAL_MACHINE, KEY, "DisplayVersion").unwrap_or_default();
+    // ProductName still says "Windows 10" on Windows 11; the build tells them apart.
+    let name = if build >= 22000 { "Windows 11" } else { "Windows 10" };
+    format!("{name} {release} build {build}.{ubr}")
+}
+
 fn read_string(key: &str, name: &str) -> Option<String> {
+    read_string_in(HKEY_CURRENT_USER, key, name)
+}
+
+fn read_string_in(root: HKEY, key: &str, name: &str) -> Option<String> {
     let (k, n) = (wide(key), wide(name));
     let mut size = 0u32;
     unsafe {
-        if RegGetValueW(HKEY_CURRENT_USER, k.as_ptr(), n.as_ptr(), RRF_RT_REG_SZ, null_mut(), null_mut(), &mut size) != ERROR_SUCCESS {
+        if RegGetValueW(root, k.as_ptr(), n.as_ptr(), RRF_RT_REG_SZ, null_mut(), null_mut(), &mut size) != ERROR_SUCCESS {
             return None;
         }
         let mut buf = vec![0u16; (size as usize).div_ceil(2)];
-        if RegGetValueW(HKEY_CURRENT_USER, k.as_ptr(), n.as_ptr(), RRF_RT_REG_SZ, null_mut(), buf.as_mut_ptr() as *mut c_void, &mut size) != ERROR_SUCCESS {
+        if RegGetValueW(root, k.as_ptr(), n.as_ptr(), RRF_RT_REG_SZ, null_mut(), buf.as_mut_ptr() as *mut c_void, &mut size) != ERROR_SUCCESS {
             return None;
         }
         let len = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
@@ -112,11 +128,15 @@ fn read_string(key: &str, name: &str) -> Option<String> {
 }
 
 fn read_dword(key: &str, name: &str) -> Option<u32> {
+    read_dword_in(HKEY_CURRENT_USER, key, name)
+}
+
+fn read_dword_in(root: HKEY, key: &str, name: &str) -> Option<u32> {
     let (k, n) = (wide(key), wide(name));
     let (mut value, mut size) = (0u32, 4u32);
     let r = unsafe {
         RegGetValueW(
-            HKEY_CURRENT_USER,
+            root,
             k.as_ptr(),
             n.as_ptr(),
             RRF_RT_REG_DWORD,

@@ -7,7 +7,7 @@
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
 use crate::device::{Reading, Status, Tracker};
-use crate::{bluetooth, headsetcontrol, init_com, logitech, notify, playstation, render, settings, wide, xbox};
+use crate::{bluetooth, diag, headsetcontrol, init_com, logitech, notify, playstation, render, settings, wide, xbox};
 use std::cell::RefCell;
 use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
@@ -15,7 +15,9 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::*;
+use windows_sys::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use windows_sys::Win32::System::Threading::{CreateMutexW, GetCurrentProcess, SetProcessWorkingSetSize};
 use windows_sys::Win32::UI::Controls::*;
 use windows_sys::Win32::UI::HiDpi::*;
@@ -28,6 +30,7 @@ const CMD_REFRESH: usize = 1;
 const CMD_AUTOSTART: usize = 2;
 const CMD_EXIT: usize = 3;
 const CMD_ALERTS: usize = 4;
+const CMD_COPY_DIAGNOSTICS: usize = 5;
 /// WM_POWERBROADCAST: resumed from sleep/hibernate.
 const PBT_APMRESUMEAUTOMATIC: usize = 0x12;
 const CMD_DEVICE_BASE: usize = 100;
@@ -77,6 +80,7 @@ pub fn run() {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         settings::ensure_autostart();
         settings::register_app_id();
+        diag::start();
 
         let hinst = GetModuleHandleW(null());
         let ctrl_class = wide("TaskbarBatteryController");
@@ -159,7 +163,13 @@ fn worker(controller: usize, rx: Receiver<()>) {
         return;
     }
     init_com();
-    let Ok(mut api) = hidapi::HidApi::new() else { return };
+    let mut api = match hidapi::HidApi::new() {
+        Ok(api) => api,
+        Err(e) => {
+            diag::event("hid", format!("hidapi failed to start: {e}"));
+            return;
+        }
+    };
     let mut logi = logitech::Logitech::new();
     let mut tracker = Tracker::default();
     let mut alerts = notify::LowBatteryAlerts::default();
@@ -381,11 +391,13 @@ unsafe fn show_menu(hwnd: HWND) {
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     let (refresh, autostart, exit) = (wide("Refresh now"), wide("Start with Windows"), wide("Exit"));
     let alerts = wide("Low battery alerts");
+    let copy_label = wide("Copy diagnostics");
     let checked = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
     AppendMenuW(menu, MF_STRING, CMD_REFRESH, refresh.as_ptr());
     AppendMenuW(menu, MF_STRING | checked(settings::alerts_enabled()), CMD_ALERTS, alerts.as_ptr());
     AppendMenuW(menu, MF_STRING | checked(settings::autostart_enabled()), CMD_AUTOSTART, autostart.as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
+    AppendMenuW(menu, MF_STRING, CMD_COPY_DIAGNOSTICS, copy_label.as_ptr());
     AppendMenuW(menu, MF_STRING, CMD_EXIT, exit.as_ptr());
 
     let mut pt: POINT = zeroed();
@@ -400,6 +412,7 @@ unsafe fn show_menu(hwnd: HWND) {
         CMD_REFRESH => wake(),
         CMD_AUTOSTART => settings::set_autostart(!settings::autostart_enabled()),
         CMD_ALERTS => settings::set_alerts(!settings::alerts_enabled()),
+        CMD_COPY_DIAGNOSTICS => copy_diagnostics(hwnd),
         CMD_EXIT => {
             let widget = with(|a| a.widget);
             if !widget.is_null() {
@@ -415,6 +428,44 @@ unsafe fn show_menu(hwnd: HWND) {
         }
         _ => {}
     }
+}
+
+/// Puts the diagnostics log on the clipboard and confirms with a toast.
+unsafe fn copy_diagnostics(hwnd: HWND) {
+    let (title, body) = match diag::report() {
+        Some(text) if set_clipboard(hwnd, &text) => ("Diagnostics copied", "Paste them into your device report on GitHub."),
+        Some(_) => ("Couldn't copy diagnostics", "Another app is using the clipboard. Try again."),
+        None => ("No diagnostics yet", "Nothing has been logged so far."),
+    };
+    // Toasts are WinRT, and COM is only initialized on the worker thread.
+    std::thread::spawn(move || {
+        init_com();
+        let _ = notify::show(title, body);
+    });
+}
+
+unsafe fn set_clipboard(hwnd: HWND, text: &str) -> bool {
+    const CF_UNICODETEXT: u32 = 13;
+    let units: Vec<u16> = text.replace('\n', "\r\n").encode_utf16().chain(std::iter::once(0)).collect();
+    if OpenClipboard(hwnd) == 0 {
+        return false;
+    }
+    let mut ok = false;
+    let mem = GlobalAlloc(GMEM_MOVEABLE, units.len() * 2);
+    if !mem.is_null() {
+        let dst = GlobalLock(mem) as *mut u16;
+        if !dst.is_null() {
+            std::ptr::copy_nonoverlapping(units.as_ptr(), dst, units.len());
+            GlobalUnlock(mem);
+            EmptyClipboard();
+            ok = !SetClipboardData(CF_UNICODETEXT, mem).is_null();
+        }
+        if !ok {
+            GlobalFree(mem); // on success the clipboard owns it
+        }
+    }
+    CloseClipboard();
+    ok
 }
 
 unsafe extern "system" fn controller_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {

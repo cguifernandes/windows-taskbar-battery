@@ -2,6 +2,7 @@
 
 mod bluetooth;
 mod device;
+mod diag;
 mod headsetcontrol;
 mod logitech;
 mod notify;
@@ -35,6 +36,7 @@ fn main() {
         Some("--list") => logitech::hidpp::list(&hidapi::HidApi::new().expect("hidapi")),
         Some("--once") => {
             init_com();
+            diag::start();
             let api = hidapi::HidApi::new().expect("hidapi");
             let mut obs = logitech::Logitech::new().scan(&api);
             obs.extend(playstation::scan(&api));

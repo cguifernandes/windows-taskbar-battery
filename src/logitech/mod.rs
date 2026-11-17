@@ -5,6 +5,7 @@ mod curve;
 pub mod hidpp;
 
 use crate::device::{Kind, Observation, State};
+use crate::diag;
 use hidapi::HidApi;
 use hidpp::{Endpoint, Error, Hidpp, Link, ERR_UNKNOWN_DEVICE};
 use std::collections::HashMap;
@@ -23,8 +24,9 @@ const UNIFIED_BATTERY: u16 = 0x1004;
 const ADC_MEASUREMENT: u16 = 0x1F20;
 
 enum Raw {
-    Percent { percent: u8, charging: bool },
-    Millivolts { mv: u16, charging: bool },
+    /// `feature`: the HID++ battery feature that answered, for diagnostics.
+    Percent { percent: u8, charging: bool, feature: u16 },
+    Millivolts { mv: u16, charging: bool, feature: u16 },
     Off,
     NoBattery,
 }
@@ -50,16 +52,17 @@ impl Logitech {
     pub fn scan(&mut self, api: &HidApi) -> Vec<Observation> {
         let mut out = Vec::new();
         for ep in hidpp::endpoints(api) {
+            let receiver = RECEIVER_PIDS.contains(&ep.pid) || ep.product.to_ascii_lowercase().contains("receiver");
+            let key = format!("logi:{:04x}:{}", ep.pid, ep.iface);
+            let what = format!("\"{}\" ({})", ep.product, if receiver { "receiver" } else { "direct" });
             let link = match Link::open(api, &ep) {
                 Ok(link) => link,
                 Err(e) => {
-                    if cfg!(debug_assertions) {
-                        eprintln!("[logi:{:04x}:{}] open failed: {e}", ep.pid, ep.iface);
-                    }
+                    diag::event(&key, format!("{what}: open failed: {e}"));
                     continue;
                 }
             };
-            let receiver = RECEIVER_PIDS.contains(&ep.pid) || ep.product.to_ascii_lowercase().contains("receiver");
+            diag::event(&key, format!("{what}: opened"));
             if receiver {
                 out.extend((1..=6).filter_map(|i| self.probe(&link, &ep, i, true)));
             } else {
@@ -84,19 +87,18 @@ impl Logitech {
                 result = battery(link, index);
             }
         }
+        let answered = result.is_ok();
         let raw = match result {
             Ok(Raw::NoBattery) => {
-                if cfg!(debug_assertions) {
-                    eprintln!("[{id}] no battery feature");
-                }
+                diag::event(&id, "no battery feature (0x1000, 0x1001, 0x1004, 0x1F20)");
                 return None;
             }
             Ok(raw) => raw,
             Err(Error::Protocol(ERR_UNKNOWN_DEVICE)) if via_receiver => return None, // empty slot
             Err(e) => {
-                debug(&id, &e);
                 if via_receiver {
                     // Paired but not answering (asleep/off). Only meaningful if we know it.
+                    diag::event(&id, format!("no answer: {e}"));
                     let known = self.identities.get(&id)?;
                     return Some(Observation {
                         id,
@@ -109,14 +111,18 @@ impl Logitech {
                 // wireless dongle (e.g. headset switched off), otherwise ignore it.
                 let looks_wireless = ["wireless", "headset"].iter().any(|k| ep.product.to_ascii_lowercase().contains(k));
                 if !self.identities.contains_key(&id) && !looks_wireless {
+                    diag::event(&id, format!("no answer: {e} (ignored: not a wireless dongle)"));
                     return None;
                 }
+                diag::event(&id, format!("no answer: {e} (shown as off)"));
                 Raw::Off
             }
         };
 
-        if !self.identities.contains_key(&id) && !matches!(raw, Raw::Off) {
+        let new = !self.identities.contains_key(&id) && !matches!(raw, Raw::Off);
+        if new {
             let identity = identify(link, index, ep, via_receiver);
+            diag::event(&format!("{id} identity"), format!("\"{}\", {:?}, model pids {:04x?}", identity.name, identity.kind, identity.pids));
             self.identities.insert(id.clone(), identity);
         }
         let identity = self.identities.get(&id).cloned().unwrap_or_else(|| Identity {
@@ -126,15 +132,26 @@ impl Logitech {
         });
 
         let state = match raw {
-            Raw::Percent { percent, charging } => State::Battery { percent, charging },
-            Raw::Millivolts { mv, charging } => {
+            Raw::Percent { percent, charging, feature } => {
+                diag::event(&id, format!("battery via HID++ 0x{feature:04X} (percent)"));
+                State::Battery { percent, charging }
+            }
+            Raw::Millivolts { mv, charging, feature } => {
                 let percent = self.curves.percent(&identity.pids, mv);
-                if cfg!(debug_assertions) {
-                    eprintln!("[{id}] {mv} mV -> {percent}% (pids {:04x?})", identity.pids);
+                diag::event(&id, format!("battery via HID++ 0x{feature:04X} (voltage)"));
+                if new {
+                    // One sample per device: enough to check the curve without logging every reading.
+                    diag::event(&format!("{id} sample"), format!("{mv} mV -> {percent}%"));
                 }
                 State::Battery { percent, charging }
             }
-            Raw::Off | Raw::NoBattery => State::Off,
+            Raw::Off => {
+                if answered {
+                    diag::event(&id, "off (dongle reports the device isn't linked)");
+                }
+                State::Off
+            }
+            Raw::NoBattery => State::Off,
         };
         Some(Observation { id, name: Some(identity.name), kind: Some(identity.kind), state })
     }
@@ -147,31 +164,25 @@ pub fn reports_pid(observations: &[Observation], pid: u16) -> bool {
     observations.iter().any(|o| o.id.starts_with(&prefix))
 }
 
-fn debug(id: &str, e: &Error) {
-    if cfg!(debug_assertions) {
-        eprintln!("[{id}] {e}");
-    }
-}
-
 fn battery(link: &dyn Hidpp, index: u8) -> Result<Raw, Error> {
     if let Some(f) = link.feature_index(index, UNIFIED_BATTERY)? {
         let r = link.request(index, f, 0x1, &[])?; // get_status
-        return Ok(Raw::Percent { percent: r[0], charging: matches!(r[2], 1 | 2) });
+        return Ok(Raw::Percent { percent: r[0], charging: matches!(r[2], 1 | 2), feature: UNIFIED_BATTERY });
     }
     if let Some(f) = link.feature_index(index, BATTERY_STATUS)? {
         let r = link.request(index, f, 0x0, &[])?;
-        return Ok(Raw::Percent { percent: r[0], charging: matches!(r[2], 1 | 2 | 4) });
+        return Ok(Raw::Percent { percent: r[0], charging: matches!(r[2], 1 | 2 | 4), feature: BATTERY_STATUS });
     }
     if let Some(f) = link.feature_index(index, BATTERY_VOLTAGE)? {
         let r = link.request(index, f, 0x0, &[])?;
-        return Ok(Raw::Millivolts { mv: u16::from_be_bytes([r[0], r[1]]), charging: r[2] & 0x80 != 0 });
+        return Ok(Raw::Millivolts { mv: u16::from_be_bytes([r[0], r[1]]), charging: r[2] & 0x80 != 0, feature: BATTERY_VOLTAGE });
     }
     if let Some(f) = link.feature_index(index, ADC_MEASUREMENT)? {
         let r = link.request(index, f, 0x0, &[])?;
         if r[2] & 0x01 == 0 {
             return Ok(Raw::Off); // dongle present, device off
         }
-        return Ok(Raw::Millivolts { mv: u16::from_be_bytes([r[0], r[1]]), charging: r[2] & 0x02 != 0 });
+        return Ok(Raw::Millivolts { mv: u16::from_be_bytes([r[0], r[1]]), charging: r[2] & 0x02 != 0, feature: ADC_MEASUREMENT });
     }
     Ok(Raw::NoBattery)
 }
@@ -283,7 +294,7 @@ mod tests {
     #[test]
     fn adc_headset_reports_millivolts() {
         // 4000 mV = 0x0FA0, flags: linked.
-        let Raw::Millivolts { mv, charging } = raw(battery(&g733(Reply::Ok(vec![0x0F, 0xA0, 0x01])), 0xFF)) else {
+        let Raw::Millivolts { mv, charging, .. } = raw(battery(&g733(Reply::Ok(vec![0x0F, 0xA0, 0x01])), 0xFF)) else {
             panic!("not millivolts")
         };
         assert_eq!((mv, charging), (4000, false));
@@ -305,19 +316,19 @@ mod tests {
     #[test]
     fn unified_battery_wins_over_other_features() {
         let dev = Fake::new(&[(UNIFIED_BATTERY, 5), (BATTERY_VOLTAGE, 6)]).reply(5, 1, Reply::Ok(vec![72, 0, 1]));
-        assert!(matches!(raw(battery(&dev, 1)), Raw::Percent { percent: 72, charging: true }));
+        assert!(matches!(raw(battery(&dev, 1)), Raw::Percent { percent: 72, charging: true, feature: UNIFIED_BATTERY }));
     }
 
     #[test]
     fn battery_status_percent() {
         let dev = Fake::new(&[(BATTERY_STATUS, 4)]).reply(4, 0, Reply::Ok(vec![55, 0, 0]));
-        assert!(matches!(raw(battery(&dev, 1)), Raw::Percent { percent: 55, charging: false }));
+        assert!(matches!(raw(battery(&dev, 1)), Raw::Percent { percent: 55, charging: false, feature: BATTERY_STATUS }));
     }
 
     #[test]
     fn battery_voltage_charging_bit() {
         let dev = Fake::new(&[(BATTERY_VOLTAGE, 3)]).reply(3, 0, Reply::Ok(vec![0x0E, 0x10, 0x80]));
-        assert!(matches!(raw(battery(&dev, 1)), Raw::Millivolts { mv: 3600, charging: true }));
+        assert!(matches!(raw(battery(&dev, 1)), Raw::Millivolts { mv: 3600, charging: true, .. }));
     }
 
     #[test]

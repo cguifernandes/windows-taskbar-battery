@@ -14,6 +14,7 @@
 //! them; until then the battery isn't available and the controller isn't shown.
 
 use crate::device::{Kind, Observation, State};
+use crate::diag;
 use hidapi::{HidApi, HidDevice};
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -37,8 +38,25 @@ pub fn scan(api: &HidApi) -> Vec<Observation> {
         if d.usage_page() != 0x01 || d.usage() != 0x05 || !seen.insert(d.path().to_owned()) {
             continue;
         }
-        let Ok(dev) = api.open_path(d.path()) else { continue };
-        let Some((percent, charging)) = read_status(&dev, dualsense) else { continue };
+        // Not the serial: it identifies the controller.
+        let key = format!("ps:{pid:04x}:{}", seen.len());
+        let dev = match api.open_path(d.path()) {
+            Ok(dev) => dev,
+            Err(e) => {
+                diag::event(&key, format!("open failed: {e}"));
+                continue;
+            }
+        };
+        let (percent, charging) = match read_status(&dev, dualsense) {
+            Ok((percent, charging, report)) => {
+                diag::event(&key, format!("battery via input report 0x{report:02X}"));
+                (percent, charging)
+            }
+            Err(why) => {
+                diag::event(&key, why);
+                continue;
+            }
+        };
 
         let name = match pid {
             DUALSENSE_EDGE => "DualSense Edge",
@@ -57,11 +75,17 @@ pub fn scan(api: &HidApi) -> Vec<Observation> {
     out
 }
 
-fn read_status(dev: &HidDevice, dualsense: bool) -> Option<(u8, bool)> {
+/// (percent, charging, report id), or why there's no reading (for diagnostics).
+fn read_status(dev: &HidDevice, dualsense: bool) -> Result<(u8, bool, u8), String> {
     let deadline = Instant::now() + READ_WINDOW;
     let mut buf = [0u8; 128];
+    let mut last = None;
     while Instant::now() < deadline {
-        let n = dev.read_timeout(&mut buf, 50).ok()?;
+        let n = dev.read_timeout(&mut buf, 50).map_err(|e| format!("read failed: {e}"))?;
+        if n == 0 {
+            continue;
+        }
+        last = Some((buf[0], n));
         let status = match (dualsense, buf[0]) {
             (true, 0x01) if n >= 64 => buf[53],
             (true, 0x31) if n >= 78 => buf[54],
@@ -69,9 +93,13 @@ fn read_status(dev: &HidDevice, dualsense: bool) -> Option<(u8, bool)> {
             (false, 0x11) if n >= 78 => buf[32],
             _ => continue, // short "basic" reports carry no battery
         };
-        return Some(if dualsense { dualsense_status(status) } else { dualshock4_status(status) });
+        let (percent, charging) = if dualsense { dualsense_status(status) } else { dualshock4_status(status) };
+        return Ok((percent, charging, buf[0]));
     }
-    None
+    Err(match last {
+        Some((id, n)) => format!("only basic input reports (last: 0x{id:02X}, {n} bytes); over Bluetooth a game or Steam must enable the full one"),
+        None => "no input reports".into(),
+    })
 }
 
 /// Low nibble: level 0..10. High nibble: 0 discharging, 1 charging, 2 full.

@@ -6,6 +6,7 @@
 //! on PATH.
 
 use crate::device::{Kind, Observation, State};
+use crate::diag;
 use serde::Deserialize;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Deserialize)]
 struct Output {
+    #[serde(default)]
+    version: String,
     #[serde(default)]
     devices: Vec<Device>,
 }
@@ -45,35 +48,49 @@ struct Battery {
 pub fn find() -> Option<PathBuf> {
     let beside = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
     let path_dirs = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
-    beside
+    let exe = beside
         .into_iter()
         .chain(path_dirs)
         .flat_map(|dir| EXE_NAMES.iter().map(move |n| dir.join(n)))
-        .find(|p| p.is_file())
+        .find(|p| p.is_file());
+    // Not the path: it usually contains the user name.
+    diag::event("headsetcontrol", if exe.is_some() { "found" } else { "not installed (optional)" });
+    exe
 }
 
 /// Runs HeadsetControl and returns its headsets. `skip_pid` filters out devices another
 /// source already reports (e.g. Logitech headsets read over HID++).
 pub fn scan(exe: &Path, skip_pid: impl Fn(u16) -> bool) -> Vec<Observation> {
-    let Some(json) = run(exe) else { return Vec::new() };
-    let output: Output = match serde_json::from_str(&json) {
-        Ok(o) => o,
-        Err(e) => {
-            if cfg!(debug_assertions) {
-                eprintln!("[headsetcontrol] bad json: {e}");
-            }
+    let json = match run(exe) {
+        Ok(json) => json,
+        Err(why) => {
+            diag::event("headsetcontrol run", why);
             return Vec::new();
         }
     };
+    let output: Output = match serde_json::from_str(&json) {
+        Ok(o) => o,
+        Err(e) => {
+            diag::event("headsetcontrol run", format!("unexpected output: {e}"));
+            return Vec::new();
+        }
+    };
+    diag::event("headsetcontrol run", format!("version {}, {} device(s)", output.version, output.devices.len()));
     output
         .devices
         .into_iter()
         .filter_map(|d| {
             let pid = parse_hex(&d.id_product)?;
+            let key = format!("hc:{}:{pid:04x}", d.id_vendor.trim_start_matches("0x"));
             if skip_pid(pid) {
+                diag::event(&key, "skipped: already read over HID++");
                 return None;
             }
-            let battery = d.battery?;
+            let Some(battery) = d.battery else {
+                diag::event(&key, format!("\"{}\": no battery info", d.device));
+                return None;
+            };
+            diag::event(&key, format!("\"{}\": {}", d.device, battery.status));
             let state = match battery.status.as_str() {
                 "BATTERY_AVAILABLE" => State::Battery { percent: battery.level.clamp(0, 100) as u8, charging: false },
                 "BATTERY_CHARGING" => State::Battery { percent: battery.level.clamp(0, 100) as u8, charging: true },
@@ -96,24 +113,24 @@ pub fn scan(exe: &Path, skip_pid: impl Fn(u16) -> bool) -> Vec<Observation> {
         .collect()
 }
 
-fn run(exe: &Path) -> Option<String> {
+fn run(exe: &Path) -> Result<String, String> {
     let mut child = Command::new(exe)
         .args(["-o", "json"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
-        .ok()?;
+        .map_err(|e| format!("failed to start: {e}"))?;
     let deadline = Instant::now() + TIMEOUT;
-    while child.try_wait().ok()?.is_none() {
+    while child.try_wait().map_err(|e| e.to_string())?.is_none() {
         if Instant::now() > deadline {
             let _ = child.kill();
-            return None;
+            return Err(format!("no answer within {} s", TIMEOUT.as_secs()));
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    let out = child.wait_with_output().ok()?;
-    String::from_utf8(out.stdout).ok()
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    String::from_utf8(out.stdout).map_err(|_| "output isn't UTF-8".into())
 }
 
 fn parse_hex(s: &str) -> Option<u16> {

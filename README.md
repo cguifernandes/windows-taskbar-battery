@@ -216,6 +216,10 @@ If `headsetcontrol.exe` (or `headsetcontrol-windows-x86_64.exe`) is next to `tas
 - Install G HUB (it doesn't need to be running) so its battery curves are used. Without them a generic curve is used, which can be off by a few percent.
 - G HUB also smooths readings over time, so the two can differ by about 1%.
 
+**Still missing or wrong? Send diagnostics.**
+- Right-click the widget → **Copy diagnostics**, then paste it into a [device report](../../issues/new?template=device_report.yml). It says what each source found and why a device wasn't shown.
+- The log is at `%LOCALAPPDATA%\taskbar-battery\diagnostics.log`, so you can read it first. It holds USB/HID ids, Bluetooth device classes, error codes and the app and Windows versions. It never holds Bluetooth addresses or Bluetooth names, serial numbers or file paths. Bluetooth devices only get a short tag (`bt#395c`) so lines about the same device can be matched up.
+
 **The widget overlaps something or is misplaced after a Windows update.**
 - Windows updates can change the taskbar's internals. Please [open an issue](../../issues) with a screenshot and your Windows build (`winver`).
 
@@ -251,6 +255,7 @@ Everything it writes:
 | `HKCU\Software\taskbar-battery` → `AutostartOptOut`, `Hidden`, `LowBatteryAlerts` | Your menu choices |
 | `HKCU\Software\Classes\AppUserModelId\TaskbarBattery` | Lets Windows show its notifications |
 | `%LOCALAPPDATA%\taskbar-battery\icon.png` | Icon shown in its notifications |
+| `%LOCALAPPDATA%\taskbar-battery\diagnostics.log` | What each device source found, for support (kept under ~512 KB) |
 
 ---
 
@@ -264,7 +269,7 @@ cd windows-taskbar-battery
 cargo build --release            # -> target/release/taskbar-battery.exe
 ```
 
-Debug builds keep a console window and print diagnostics. They also don't register themselves to start with Windows.
+Debug builds keep a console window and also print the diagnostics log to it. They don't register themselves to start with Windows.
 
 ```sh
 cargo run                        # run the widget with logs
@@ -288,6 +293,7 @@ Mouse      G Pro Wireless Gaming Mouse          99%   [logi:c539:2:01]
 src/
 ├── main.rs            entry point and debug commands
 ├── device.rs          device model; tracks devices across scans (sleep, disconnects)
+├── diag.rs            diagnostics log for support (no addresses or user-given names)
 ├── logitech/
 │   ├── mod.rs         device discovery, battery features, name/type
 │   ├── hidpp.rs       HID++ transport (requests, replies, errors)
@@ -314,7 +320,7 @@ Pushing a tag like `v0.2.0` makes GitHub Actions build the exe and publish it as
 
 Issues and PRs are welcome, especially:
 
-- **Device reports:** tell us what works and what doesn't. Include the output of `cargo run -- --once` if you can.
+- **Device reports:** tell us what works and what doesn't. Include the output of right-click → **Copy diagnostics**.
 - **New brands:** add a module next to `logitech/` and `bluetooth.rs` that returns a list of `device::Observation`s. [HeadsetControl](https://github.com/Sapd/HeadsetControl) and [OpenRazer](https://github.com/openrazer/openrazer) document many headset and Razer protocols.
 - **Multi-monitor taskbars**, Windows 10 testing, and translations.
 

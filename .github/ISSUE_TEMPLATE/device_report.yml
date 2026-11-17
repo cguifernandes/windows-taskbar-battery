@@ -46,10 +46,11 @@ body:
   - type: textarea
     id: once
     attributes:
-      label: Diagnostic output
+      label: Diagnostics
       description: |
-        Optional but very helpful. Download the source and run `cargo run -- --once` (prints detected devices),
-        or paste the device list from the right-click menu.
+        Very helpful, especially if the device isn't shown. Right-click the widget → **Copy diagnostics** and paste here.
+        It has no Bluetooth addresses or names, serial numbers or file paths
+        (see `%LOCALAPPDATA%\taskbar-battery\diagnostics.log`).
       render: text
   - type: input
     id: version

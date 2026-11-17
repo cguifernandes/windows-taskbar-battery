@@ -6,6 +6,7 @@
 //!   SetupAPI only, no WinRT.
 
 use crate::device::{Kind, Observation, State};
+use crate::diag;
 use crate::wide;
 use std::collections::HashSet;
 use std::mem::{size_of, zeroed};
@@ -48,12 +49,6 @@ pub fn scan() -> Vec<Observation> {
     out
 }
 
-fn debug(msg: &str) {
-    if cfg!(debug_assertions) {
-        eprintln!("[bt] {msg}");
-    }
-}
-
 /// Paired LE devices are found through SetupAPI rather than a WinRT device query: the query
 /// syntax (AQS) loads Windows' search and language stack, which costs more memory than the
 /// rest of the app. Devices SetupAPI reports as disconnected are skipped without touching
@@ -65,13 +60,19 @@ fn scan_ble(out: &mut Vec<Observation>) {
         if node.connected == Some(false) || !seen.insert(addr) {
             continue;
         }
-        let Ok(dev) = BluetoothLEDevice::FromBluetoothAddressAsync(addr).and_then(|op| op.get()) else { continue };
+        let key = format!("ble#{}", diag::bt_tag(addr));
+        let dev = match BluetoothLEDevice::FromBluetoothAddressAsync(addr).and_then(|op| op.get()) {
+            Ok(dev) => dev,
+            Err(e) => {
+                diag::event(&key, format!("open failed: {e}"));
+                continue;
+            }
+        };
         if dev.ConnectionStatus().is_ok_and(|s| s == BluetoothConnectionStatus::Connected) {
-            debug(&format!("ble {addr:012x} connected: {}", dev.Name().unwrap_or_default()));
             match read_ble(&dev) {
-                Ok(Some(o)) => out.push(o),
-                Ok(None) => {}
-                Err(e) => debug(&format!("{}: {e}", dev.Name().unwrap_or_default())),
+                Ok(Ok(o)) => out.push(o),
+                Ok(Err(reason)) => diag::event(&key, reason),
+                Err(e) => diag::event(&key, format!("error: {e}")),
             }
         }
         let _ = dev.Close();
@@ -85,11 +86,13 @@ fn device_address(id: &str) -> Option<u64> {
     (mac.len() == 12).then(|| u64::from_str_radix(mac, 16).ok()).flatten()
 }
 
-fn read_ble(dev: &BluetoothLEDevice) -> windows::core::Result<Option<Observation>> {
+/// The device, or why it isn't shown (for diagnostics).
+fn read_ble(dev: &BluetoothLEDevice) -> windows::core::Result<Result<Observation, String>> {
     // Appearance: skip phones (0x0040..) and computers (0x0080..); classify HID and audio.
     let appearance = dev.Appearance()?.RawValue()?;
+    let skip = |why: &str| Ok(Err(format!("appearance 0x{appearance:04X}: {why}")));
     let kind = match appearance >> 6 {
-        0x01 | 0x02 => return Ok(None),
+        0x01 | 0x02 => return skip("phone or computer, skipped"),
         0x0F => match appearance & 0x3F {
             1 => Some(Kind::Keyboard),
             2 => Some(Kind::Mouse),
@@ -106,21 +109,27 @@ fn read_ble(dev: &BluetoothLEDevice) -> windows::core::Result<Option<Observation
     };
 
     let result = dev.GetGattServicesForUuidWithCacheModeAsync(GattServiceUuids::Battery()?, BluetoothCacheMode::Cached)?.get()?;
-    if result.Status()? != GattCommunicationStatus::Success {
-        return Ok(None);
+    let status = result.Status()?;
+    if status != GattCommunicationStatus::Success {
+        return skip(&format!("Battery Service lookup failed ({})", gatt_status(status)));
     }
     let services = result.Services()?;
     let level = read_level(&services);
     for i in 0..services.Size()? {
         let _ = services.GetAt(i)?.Close();
     }
-    let Some(percent) = level? else { return Ok(None) };
+    let percent = match level? {
+        Ok(percent) => percent,
+        Err(why) => return skip(&why),
+    };
 
     let name = dev.Name()?.to_string();
     if name.to_ascii_lowercase().contains("xbox") {
-        return Ok(None); // reported (more precisely) by the xbox module
+        return skip("Xbox controller, reported by the Xbox source"); // more precise there
     }
-    Ok(Some(Observation {
+    // Not the name: users rename Bluetooth devices.
+    diag::event(&format!("ble#{}", diag::bt_tag(dev.BluetoothAddress()?)), format!("appearance 0x{appearance:04X}: battery via GATT"));
+    Ok(Ok(Observation {
         id: format!("ble:{:012x}", dev.BluetoothAddress()?),
         kind: kind.or_else(|| Some(Kind::from_name(&name))),
         name: Some(name),
@@ -128,22 +137,35 @@ fn read_ble(dev: &BluetoothLEDevice) -> windows::core::Result<Option<Observation
     }))
 }
 
-fn read_level(services: &IVectorView<GattDeviceService>) -> windows::core::Result<Option<u8>> {
+fn read_level(services: &IVectorView<GattDeviceService>) -> windows::core::Result<Result<u8, String>> {
     if services.Size()? == 0 {
-        return Ok(None);
+        return Ok(Err("no Battery Service (0x180F)".into()));
     }
     let chars = services
         .GetAt(0)?
         .GetCharacteristicsForUuidWithCacheModeAsync(GattCharacteristicUuids::BatteryLevel()?, BluetoothCacheMode::Cached)?
         .get()?;
-    if chars.Status()? != GattCommunicationStatus::Success || chars.Characteristics()?.Size()? == 0 {
-        return Ok(None);
+    if chars.Status()? != GattCommunicationStatus::Success {
+        return Ok(Err(format!("Battery Level lookup failed ({})", gatt_status(chars.Status()?))));
+    }
+    if chars.Characteristics()?.Size()? == 0 {
+        return Ok(Err("no Battery Level characteristic (0x2A19)".into()));
     }
     let value = chars.Characteristics()?.GetAt(0)?.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached)?.get()?;
     if value.Status()? != GattCommunicationStatus::Success {
-        return Ok(None);
+        return Ok(Err(format!("reading Battery Level failed ({})", gatt_status(value.Status()?))));
     }
-    Ok(Some(DataReader::FromBuffer(&value.Value()?)?.ReadByte()?))
+    Ok(Ok(DataReader::FromBuffer(&value.Value()?)?.ReadByte()?))
+}
+
+fn gatt_status(s: GattCommunicationStatus) -> &'static str {
+    match s.0 {
+        0 => "success",
+        1 => "unreachable",
+        2 => "protocol error",
+        3 => "access denied",
+        _ => "unknown status",
+    }
 }
 
 /// Entirely SetupAPI: the battery level sits on the device's profile nodes
@@ -173,6 +195,10 @@ fn scan_classic(out: &mut Vec<Observation>) {
             (0x05, _) => Kind::Gamepad,
             _ => Kind::from_name(&name),
         };
+        diag::event(
+            &format!("bt#{}", diag::bt_tag(addr)),
+            format!("class 0x{cod:06X} ({kind:?}): battery via Windows, {}", if connected { "connected" } else { "not connected" }),
+        );
         out.push(Observation {
             id: format!("bt:{addr:012x}"),
             // Paired-but-disconnected devices keep a stale level; only add them once seen connected.
@@ -180,6 +206,13 @@ fn scan_classic(out: &mut Vec<Observation>) {
             kind: Some(kind),
             state: if connected { State::Battery { percent: percent.min(100), charging: false } } else { State::Off },
         });
+    }
+    // The usual "my headphones don't show up" case: Windows never got a level from them.
+    for dev in &nodes {
+        let Some(addr) = device_address(&dev.id) else { continue };
+        if dev.connected == Some(true) && !seen.contains(&addr) {
+            diag::event(&format!("bt#{}", diag::bt_tag(addr)), format!("class 0x{:06X}: connected, no battery level in Windows", dev.class.unwrap_or(0)));
+        }
     }
 }
 

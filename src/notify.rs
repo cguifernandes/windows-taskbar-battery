@@ -31,9 +31,7 @@ impl LowBatteryAlerts {
                 if settings::alerts_enabled() {
                     let body = format!("{} is at {percent}%. Time to charge it.", r.name);
                     if let Err(e) = show("Low battery", &body) {
-                        if cfg!(debug_assertions) {
-                            eprintln!("[notify] {e}");
-                        }
+                        crate::diag::event("notify", format!("toast failed: {e}"));
                     }
                 }
             }
