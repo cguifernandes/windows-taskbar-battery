@@ -1,11 +1,11 @@
 # taskbar-battery
 
-**See the battery level of your wireless mouse, headset, earbuds, and keyboard right on the Windows 11 taskbar.** No need to open G HUB or Bluetooth settings.
+**See the battery level of your wireless mouse, headset, earbuds, keyboard, and controller right on the Windows 11 taskbar.** No need to open G HUB or Bluetooth settings.
 
 ![taskbar-battery on the Windows 11 taskbar](docs/screenshot.png)
 
-- **Automatic:** detects Logitech wireless devices and Bluetooth devices on its own, with nothing to configure.
-- **Lightweight:** a single ~300 KB executable written in Rust. It uses under 20 MB of RAM, has no installer or runtime dependencies, and sits idle between checks.
+- **Automatic:** detects Logitech wireless devices, Bluetooth devices, and Xbox/PlayStation controllers on its own, with nothing to configure.
+- **Lightweight:** a single ~500 KB executable written in Rust. It uses under 20 MB of RAM, has no installer or runtime dependencies, and sits idle between checks.
 - **Accurate:** for Logitech devices that report a voltage, it uses G HUB's own battery curves (when G HUB is installed), so the percentages match what G HUB shows.
 - **Native look:** follows the light/dark taskbar theme, scales with DPI, and uses Windows' own Fluent icons.
 - **Low battery alerts:** a Windows notification when a device drops to 15%.
@@ -36,6 +36,9 @@
 | **Logitech dongles** | Wireless headsets (e.g. PRO X Wireless, G series) | HID++, directly over the dongle |
 | **Bluetooth LE** | Most Bluetooth mice, keyboards, and gamepads | Standard GATT Battery Service |
 | **Classic Bluetooth** | Headphones and earbuds (AirPods, Galaxy Buds, Sony…) | The battery level the device reports to Windows, the same value Settings › Bluetooth shows |
+| **Xbox controllers** | Xbox One / Series and other XInput controllers, over the Xbox Wireless adapter, Bluetooth, or USB | Windows.Gaming.Input battery report (exact capacity) |
+| **PlayStation controllers** | DualSense, DualSense Edge, DualShock 4, over USB or Bluetooth | The controller's own input report |
+| **Other headsets** via [HeadsetControl](#other-headsets-headsetcontrol) | SteelSeries Arctis, HyperX Cloud, Corsair, Audeze, Logitech G and more | HeadsetControl, if installed (optional) |
 
 ### Tested on real hardware
 
@@ -45,12 +48,24 @@
 | Logitech PRO X Wireless (headset) | USB dongle | ✅ matches G HUB |
 | Apple AirPods | Classic Bluetooth | ✅ |
 | Bluetooth LE mouse/keyboard | Bluetooth LE | ⚠️ implemented, not yet tested on hardware |
+| Xbox / PlayStation controllers | all | ⚠️ implemented, not yet tested on hardware |
+| HeadsetControl headsets | USB dongle | ⚠️ implemented, not yet tested on hardware |
 
-Using a device that isn't listed? Please [open an issue](../../issues) saying whether it works, so it can be added to the table.
+Using a device that isn't listed? Please [open a device report](../../issues/new?template=device_report.yml) saying whether it works, so it can be added to the table.
+
+### Other headsets (HeadsetControl)
+
+[HeadsetControl](https://github.com/Sapd/HeadsetControl) supports dozens of headsets that use proprietary USB dongles: SteelSeries, HyperX, Corsair, Audeze, Roccat, and more. taskbar-battery uses it automatically if it finds it:
+
+1. Download `headsetcontrol-windows-x86_64.exe` from [HeadsetControl's releases](https://github.com/Sapd/HeadsetControl/releases/latest).
+2. Put it **in the same folder as `taskbar-battery.exe`**, or anywhere on your `PATH`. You can also use its installer, which adds it to `PATH`.
+3. Restart taskbar-battery (right-click → Exit, then start it again).
+
+It runs as a separate program every 60 s and isn't bundled. Its GPL license doesn't apply to this project. Logitech headsets that taskbar-battery already reads itself aren't listed twice.
 
 ### Not supported (yet)
 
-Razer, SteelSeries, Corsair, HyperX and other **2.4 GHz dongles** each use their own undocumented protocol. They will show up if they're connected over Bluetooth, but not through their USB dongles. See [Contributing](#contributing) if you want to add one.
+Razer, Corsair, and other **2.4 GHz mouse/keyboard dongles** each use their own undocumented protocol. They will show up if they're connected over Bluetooth, but not through their USB dongles. See [Contributing](#contributing) if you want to add one. For many of them, [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) already works.
 
 ---
 
@@ -86,6 +101,8 @@ Razer, SteelSeries, Corsair, HyperX and other **2.4 GHz dongles** each use their
 
 Device types have their own icons: headset, earbuds, mouse, keyboard, gamepad, and a generic battery icon for anything else. Devices are shown in that order.
 
+**Hover** over the widget to see each device's full name and status, e.g. *"G Pro Wireless Gaming Mouse: 87% (asleep)"*.
+
 ### Right-click menu
 
 Right-click the widget to see:
@@ -100,8 +117,9 @@ Right-click the widget to see:
 
 | Source | Interval |
 |---|---|
-| Logitech | every 15 s |
+| Logitech, Xbox, and PlayStation controllers | every 15 s |
 | Bluetooth | every 60 s (reading wakes the device's radio, so it's polled less often) |
+| HeadsetControl | every 60 s (it runs as a separate process) |
 | Any USB device plugged in or out | immediately |
 | PC wakes from sleep | immediately |
 
@@ -148,11 +166,20 @@ It works alongside G HUB: requests are tagged with their own software ID, so the
 - **Classic Bluetooth:** headphones report their battery to Windows over the Hands-Free profile, and Windows stores it as a device property (`{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2`). That's where Settings › Bluetooth gets it. taskbar-battery reads the same property and only shows devices that are currently connected.
 - Earbuds and over-ear headphones are told apart by the BLE Appearance value when available, otherwise by name ("AirPods", "Buds", …).
 
+### Controllers
+
+- **Xbox and other XInput controllers:** `Windows.Gaming.Input` gives a battery report with the remaining and full capacity in mWh, so the percentage is exact, along with the charging state. Wired controllers without a battery are skipped. Controllers appear from the second check on (about 15 s), because Windows fills in the controller list after the API is first used.
+- **DualSense / DualShock 4:** the controllers constantly stream an input report that includes a battery level (in steps of 10%) and charging state. taskbar-battery only reads these reports and never sends anything to the controller. Over Bluetooth, controllers start with a reduced report that has no battery level. They switch to the full report once a game or Steam has used them, and until then the controller isn't shown.
+
+### HeadsetControl
+
+If `headsetcontrol.exe` (or `headsetcontrol-windows-x86_64.exe`) is next to `taskbar-battery.exe` or on `PATH`, taskbar-battery runs `headsetcontrol -o json` every 60 s (hidden, with a 5 s timeout) and reads the battery of each headset it reports. See [Other headsets](#other-headsets-headsetcontrol).
+
 ### Footprint
 
 | | |
 |---|---|
-| Executable | ~300 KB, no installer, no DLLs |
+| Executable | ~500 KB, no installer, no DLLs |
 | Memory | under 20 MB |
 | CPU | idle between checks. A Logitech scan takes well under a second |
 | Disk / registry | only the settings listed under [Uninstall](#uninstall) |
@@ -174,6 +201,14 @@ It works alongside G HUB: requests are tagged with their own software ID, so the
 - Check that Windows itself shows its battery level in *Settings › Bluetooth & devices*. If Windows doesn't get it, the device probably doesn't report it.
 - Bluetooth is checked every 60 s. Use *Refresh now* from the right-click menu to check immediately.
 
+**My controller is missing.**
+- Xbox: give it about 15 s after starting taskbar-battery. Wired controllers have no battery to show.
+- PlayStation over Bluetooth: open a game or Steam once so the controller sends its full report (see [Controllers](#controllers)).
+- Tools that take exclusive control of the controller (e.g. DS4Windows with "Hide DS4 controller") can prevent reading it.
+
+**My SteelSeries / HyperX / Corsair headset is missing.**
+- Install [HeadsetControl](#other-headsets-headsetcontrol), then restart taskbar-battery. Check that HeadsetControl itself shows the battery: run `headsetcontrol -b`.
+
 **The percentage differs from G HUB.**
 - Install G HUB (it doesn't need to be running) so its battery curves are used. Without them a generic curve is used, which can be off by a few percent.
 - G HUB also smooths readings over time, so the two can differ by about 1%.
@@ -189,7 +224,8 @@ It works alongside G HUB: requests are tagged with their own software ID, so the
 - Placement relies on the taskbar's internal window layout, which isn't a public API. A future Windows update could break it.
 - Charging state isn't available for Bluetooth devices, and charging percentages for Logitech voltage-based devices may not match G HUB, which uses separate charging curves.
 - A Logitech device that's switched off keeps showing its last level, because it's indistinguishable from a sleeping one.
-- A device that's asleep when the app starts isn't shown until it wakes.
+- A Logitech device that's asleep when the app starts is woken once to read it. That can take a check or two (up to ~30 s).
+- PlayStation controller levels come in 10% steps, because that's what the controller reports.
 
 ---
 
@@ -201,6 +237,7 @@ It works alongside G HUB: requests are tagged with their own software ID, so the
    ```
    reg delete HKCU\Software\taskbar-battery /f
    reg delete HKCU\Software\Classes\AppUserModelId\TaskbarBattery /f
+   rmdir /s /q "%LOCALAPPDATA%\taskbar-battery"
    ```
 
 Everything it writes:
@@ -210,12 +247,13 @@ Everything it writes:
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `TaskbarBattery` | Start with Windows |
 | `HKCU\Software\taskbar-battery` → `AutostartOptOut`, `Hidden`, `LowBatteryAlerts` | Your menu choices |
 | `HKCU\Software\Classes\AppUserModelId\TaskbarBattery` | Lets Windows show its notifications |
+| `%LOCALAPPDATA%\taskbar-battery\icon.png` | Icon shown in its notifications |
 
 ---
 
 ## Build from source
 
-Requirements: [Rust](https://rustup.rs) (stable) and the Visual Studio C++ Build Tools (MSVC).
+Requirements: [Rust](https://rustup.rs) (stable) and the Visual Studio C++ Build Tools (MSVC) with the Windows SDK, which provides `rc.exe` for embedding the icon.
 
 ```sh
 git clone https://github.com/renanleonel/windows-taskbar-battery
@@ -252,10 +290,15 @@ src/
 │   ├── hidpp.rs       HID++ transport (requests, replies, errors)
 │   └── curve.rs       voltage → % (G HUB curves or generic)
 ├── bluetooth.rs       BLE battery service + classic Bluetooth battery property
-├── widget.rs          taskbar window, menu, worker thread
+├── xbox.rs            Xbox/XInput controllers (Windows.Gaming.Input)
+├── playstation.rs     DualSense / DualShock 4 input reports
+├── headsetcontrol.rs  optional HeadsetControl integration
+├── widget.rs          taskbar window, menu, tooltip, worker thread
 ├── notify.rs          low-battery notifications
 ├── render.rs          drawing (per-pixel alpha text and icons)
-└── settings.rs        registry: start with Windows, hidden devices, theme
+└── settings.rs        registry: start with Windows, hidden devices, alerts, theme
+assets/                app icon (generated by scripts/make-icon.ps1)
+build.rs               embeds icon, version info and manifest into the exe
 ```
 
 ### Releases
@@ -272,7 +315,7 @@ Issues and PRs are welcome, especially:
 - **New brands:** add a module next to `logitech/` and `bluetooth.rs` that returns a list of `device::Observation`s. [HeadsetControl](https://github.com/Sapd/HeadsetControl) and [OpenRazer](https://github.com/openrazer/openrazer) document many headset and Razer protocols.
 - **Multi-monitor taskbars**, Windows 10 testing, and translations.
 
-Please run `cargo clippy -- -D warnings` before opening a PR. CI runs it too.
+Please run `cargo clippy --all-targets -- -D warnings` and `cargo test` before opening a PR. CI runs both.
 
 ---
 
