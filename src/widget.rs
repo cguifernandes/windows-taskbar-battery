@@ -9,7 +9,7 @@
 use crate::device::{Reading, Status, Tracker};
 use crate::{bluetooth, headsetcontrol, init_com, logitech, notify, playstation, render, settings, wide, xbox};
 use std::cell::RefCell;
-use std::mem::zeroed;
+use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::CreateMutexW;
+use windows_sys::Win32::UI::Controls::*;
 use windows_sys::Win32::UI::HiDpi::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
@@ -42,6 +43,7 @@ static WAKE: OnceLock<Sender<()>> = OnceLock::new();
 struct App {
     controller: HWND,
     widget: HWND,
+    tooltip: HWND,
     taskbar_created: u32,
     light: bool,
     width: i32,
@@ -49,7 +51,14 @@ struct App {
 
 thread_local! {
     static APP: RefCell<App> = const {
-        RefCell::new(App { controller: null_mut(), widget: null_mut(), taskbar_created: 0, light: false, width: 0 })
+        RefCell::new(App {
+            controller: null_mut(),
+            widget: null_mut(),
+            tooltip: null_mut(),
+            taskbar_created: 0,
+            light: false,
+            width: 0,
+        })
     };
 }
 
@@ -225,11 +234,62 @@ unsafe fn ensure_widget() {
         GetModuleHandleW(null()),
         null(),
     );
+    let (controller, old_tip) = with(|a| (a.controller, a.tooltip));
+    if !old_tip.is_null() {
+        DestroyWindow(old_tip); // its tool was the previous (dead) widget
+    }
+    let tip = create_tooltip(controller, w);
     with(|a| {
         a.widget = w;
+        a.tooltip = tip;
         a.width = 0;
     });
     redraw();
+}
+
+/// Hover tooltip listing each device's full name and status.
+unsafe fn create_tooltip(owner: HWND, widget: HWND) -> HWND {
+    let icc = INITCOMMONCONTROLSEX { dwSize: size_of::<INITCOMMONCONTROLSEX>() as u32, dwICC: ICC_WIN95_CLASSES };
+    InitCommonControlsEx(&icc);
+    let tip = CreateWindowExW(
+        WS_EX_TOPMOST,
+        wide("tooltips_class32").as_ptr(),
+        null(),
+        WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        owner,
+        null_mut(),
+        GetModuleHandleW(null()),
+        null(),
+    );
+    if tip.is_null() {
+        return tip;
+    }
+    let mut text = wide("");
+    let mut ti = tool_info(widget, owner, &mut text);
+    SendMessageW(tip, TTM_ADDTOOLW, 0, &mut ti as *mut _ as LPARAM);
+    SendMessageW(tip, TTM_SETMAXTIPWIDTH, 0, 600); // enables multi-line text
+    tip
+}
+
+unsafe fn tool_info(widget: HWND, owner: HWND, text: &mut [u16]) -> TTTOOLINFOW {
+    let mut ti: TTTOOLINFOW = zeroed();
+    ti.cbSize = size_of::<TTTOOLINFOW>() as u32;
+    ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+    ti.hwnd = owner;
+    ti.uId = widget as usize;
+    ti.lpszText = text.as_mut_ptr();
+    ti
+}
+
+unsafe fn set_tooltip_text(lines: &[String]) {
+    let (tip, widget, controller) = with(|a| (a.tooltip, a.widget, a.controller));
+    if tip.is_null() {
+        return;
+    }
+    let mut text = wide(&lines.join("\r\n"));
+    let ti = tool_info(widget, controller, &mut text);
+    SendMessageW(tip, TTM_UPDATETIPTEXTW, 0, &ti as *const _ as LPARAM);
 }
 
 unsafe fn redraw() {
@@ -246,11 +306,12 @@ unsafe fn redraw() {
     let dpi = GetDpiForWindow(tray).max(96);
     let hidden = settings::hidden_devices();
     // Disconnected devices drop off the bar (they stay listed in the right-click menu).
-    let items: Vec<_> = readings()
+    let shown: Vec<_> = readings()
         .into_iter()
         .filter(|r| !hidden.contains(&r.id) && r.status != Status::NotConnected)
-        .map(|r| (r.kind, r.status))
         .collect();
+    set_tooltip_text(&shown.iter().map(|r| format!("{}: {}", r.name, r.status)).collect::<Vec<_>>());
+    let items: Vec<_> = shown.iter().map(|r| (r.kind, r.status)).collect();
     let width = if items.is_empty() { 0 } else { render::draw(widget, &items, dpi, tr.bottom - tr.top, light) };
     with(|a| a.width = width);
     place();
