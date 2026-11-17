@@ -122,9 +122,24 @@ pub trait Hidpp {
     }
 }
 
-pub struct Link {
-    short: Option<HidDevice>,
-    long: HidDevice,
+/// The raw HID handle `Link` talks through (a fake in tests).
+pub trait Transport {
+    fn write(&self, data: &[u8]) -> Result<usize, hidapi::HidError>;
+    fn read_timeout(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, hidapi::HidError>;
+}
+
+impl Transport for HidDevice {
+    fn write(&self, data: &[u8]) -> Result<usize, hidapi::HidError> {
+        HidDevice::write(self, data)
+    }
+    fn read_timeout(&self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, hidapi::HidError> {
+        HidDevice::read_timeout(self, buf, timeout_ms)
+    }
+}
+
+pub struct Link<T: Transport = HidDevice> {
+    short: Option<T>,
+    long: T,
 }
 
 impl Link {
@@ -133,10 +148,9 @@ impl Link {
         let short = ep.short.as_ref().and_then(|p| api.open_path(p).ok());
         Ok(Self { short, long })
     }
-
 }
 
-impl Hidpp for Link {
+impl<T: Transport> Hidpp for Link<T> {
     fn request(&self, index: u8, feature_idx: u8, function: u8, params: &[u8]) -> Result<[u8; 16], Error> {
         let func_sw = (function << 4) | SW_ID;
         let mut tx = [0u8; LEN_LONG];
@@ -146,10 +160,20 @@ impl Hidpp for Link {
         tx[3] = func_sw;
         let n = params.len().min(16);
         tx[4..4 + n].copy_from_slice(&params[..n]);
+        let mut rx = [0u8; 64];
+        // Drop replies still queued from earlier requests, e.g. a device that woke up and
+        // answered after we timed out. Root lookups (feature index 0) all look alike and don't
+        // echo the feature id, so a stale one would be taken as this request's answer.
+        for dev in self.short.iter().chain([&self.long]) {
+            for _ in 0..64 {
+                if dev.read_timeout(&mut rx, 0)? == 0 {
+                    break;
+                }
+            }
+        }
         self.long.write(&tx)?;
 
         let deadline = Instant::now() + TIMEOUT;
-        let mut rx = [0u8; 64];
         loop {
             if let Some(short) = &self.short {
                 loop {
@@ -246,6 +270,48 @@ mod tests {
     #[test]
     fn vendor_collection_without_long_usage_is_dropped() {
         assert!(group_collections([col(0x0AB5, 3, 0xFF43, 0x0001, "short only")]).is_empty());
+    }
+
+    /// Scripted handle: queued input reports, plus the reply to send for each write.
+    struct FakeHandle {
+        input: std::cell::RefCell<std::collections::VecDeque<Vec<u8>>>,
+        answer: fn(&[u8]) -> Vec<u8>,
+    }
+
+    impl Transport for FakeHandle {
+        fn write(&self, data: &[u8]) -> Result<usize, hidapi::HidError> {
+            self.input.borrow_mut().push_back((self.answer)(data));
+            Ok(data.len())
+        }
+        fn read_timeout(&self, buf: &mut [u8], _timeout_ms: i32) -> Result<usize, hidapi::HidError> {
+            Ok(match self.input.borrow_mut().pop_front() {
+                Some(r) => {
+                    buf[..r.len()].copy_from_slice(&r);
+                    r.len()
+                }
+                None => 0,
+            })
+        }
+    }
+
+    #[test]
+    fn late_reply_to_an_earlier_lookup_is_not_taken_as_the_answer() {
+        // A device that just woke up answers the lookup that had already timed out
+        // ("0x1004? not supported") after we gave up on it. Root lookup replies don't echo
+        // the feature id, so that stale reply looks exactly like an answer to the next one.
+        let stale = vec![REPORT_LONG, 1, 0x00, SW_ID, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let long = FakeHandle {
+            input: std::cell::RefCell::new([stale].into()),
+            // The device has 0x1001 at index 6.
+            answer: |tx| {
+                let mut r = tx.to_vec();
+                r[4..].fill(0);
+                r[4] = 6;
+                r
+            },
+        };
+        let link = Link { short: None, long };
+        assert_eq!(link.feature_index(1, 0x1001).unwrap(), Some(6));
     }
 
     #[test]
