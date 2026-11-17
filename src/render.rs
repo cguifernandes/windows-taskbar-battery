@@ -36,28 +36,42 @@ struct Seg {
     color: u32, // 0xRRGGBB
     opacity: u32,
     x: i32,
+    y: i32,
     w: i32,
     h: i32,
     gap_after: i32,
+    /// Index of the device this segment belongs to.
+    item: usize,
 }
 
-/// Renders the widget and returns its width in physical pixels.
-pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, height: i32, light: bool) -> i32 {
+/// How the widget is laid out on the taskbar.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Layout {
+    /// Horizontal taskbar of this height: devices in a row.
+    Row { height: i32 },
+    /// Vertical (left/right) taskbar of this width: devices stacked, icon above the label.
+    Column { width: i32 },
+}
+
+/// Renders the widget and returns its (width, height) in physical pixels.
+pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, layout: Layout, light: bool) -> (i32, i32) {
     let s = |v: i32| v * dpi as i32 / 96;
     let fg = if light { 0x000000 } else { 0xFFFFFF };
     let red = if light { 0xC42B1C } else { 0xFF6B6B };
     let green = if light { 0x0F7B0F } else { 0x6CCB5F };
 
     let mut segs = Vec::new();
-    let seg = |text: &str, icon: bool, color: u32, opacity: u32, gap_after: i32| Seg {
+    let seg = |item: usize, text: &str, icon: bool, color: u32, opacity: u32, gap_after: i32| Seg {
         text: wide(text),
         icon,
         color,
         opacity,
         x: 0,
+        y: 0,
         w: 0,
         h: 0,
         gap_after,
+        item,
     };
     for (i, (kind, status)) in items.iter().enumerate() {
         let gap = if i == items.len() - 1 { 0 } else { s(12) };
@@ -68,12 +82,12 @@ pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, height: i32, 
             }
             Status::NotConnected => ("—".to_string(), fg, 110, false),
         };
-        segs.push(seg(icon(*kind), true, color, opacity, s(5)));
+        segs.push(seg(i, icon(*kind), true, color, opacity, s(5)));
         if charging {
-            segs.push(seg(&label, false, color, opacity, s(2)));
-            segs.push(seg(BOLT, true, green, opacity, gap));
+            segs.push(seg(i, &label, false, color, opacity, s(2)));
+            segs.push(seg(i, BOLT, true, green, opacity, gap));
         } else {
-            segs.push(seg(&label, false, color, opacity, gap));
+            segs.push(seg(i, &label, false, color, opacity, gap));
         }
     }
 
@@ -93,19 +107,57 @@ pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, height: i32, 
         }
     }
 
-    // Layout.
-    let pad = s(6);
-    let mut x = pad;
+    // Measure.
     for seg in &mut segs {
         SelectObject(dc, if seg.icon { icon_font } else { text_font });
         let mut size: SIZE = zeroed();
         GetTextExtentPoint32W(dc, seg.text.as_ptr(), seg.text.len() as i32 - 1, &mut size);
-        seg.x = x;
         seg.w = size.cx;
         seg.h = size.cy;
-        x += size.cx + seg.gap_after;
     }
-    let width = x + pad;
+
+    // Layout.
+    let pad = s(6);
+    let (width, height) = match layout {
+        Layout::Row { height } => {
+            let mut x = pad;
+            for seg in &mut segs {
+                seg.x = x;
+                seg.y = (height - seg.h) / 2;
+                x += seg.w + seg.gap_after;
+            }
+            (x + pad, height)
+        }
+        Layout::Column { width } => {
+            // Per device: the icon on one line, the label (and charging bolt) centered below it.
+            let mut y = pad;
+            for i in 0..items.len() {
+                let (first, rest) = {
+                    let mut it = segs.iter_mut().filter(|s| s.item == i);
+                    (it.next(), it.collect::<Vec<_>>())
+                };
+                if let Some(icon) = first {
+                    icon.x = (width - icon.w) / 2;
+                    icon.y = y;
+                    y += icon.h + s(1);
+                }
+                let line_w: i32 = rest.iter().map(|s| s.w).sum::<i32>()
+                    + rest.iter().rev().skip(1).map(|s| s.gap_after).sum::<i32>();
+                let line_h = rest.iter().map(|s| s.h).max().unwrap_or(0);
+                let mut x = (width - line_w) / 2;
+                for seg in rest {
+                    seg.x = x;
+                    seg.y = y + (line_h - seg.h) / 2;
+                    x += seg.w + seg.gap_after;
+                }
+                y += line_h;
+                if i + 1 < items.len() {
+                    y += s(8);
+                }
+            }
+            (width, y + pad)
+        }
+    };
 
     // White-on-black text into a 32bpp DIB; coverage becomes alpha below.
     let mut bi: BITMAPINFO = zeroed();
@@ -124,28 +176,31 @@ pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, height: i32, 
         DeleteObject(text_font);
         DeleteObject(icon_font);
         DeleteDC(dc);
-        return width;
+        return (width, height);
     }
     let old_bmp = SelectObject(dc, bmp);
     SetBkMode(dc, TRANSPARENT as _);
     SetTextColor(dc, 0x00FF_FFFF);
     for seg in &segs {
         SelectObject(dc, if seg.icon { icon_font } else { text_font });
-        TextOutW(dc, seg.x, (height - seg.h) / 2, seg.text.as_ptr(), seg.text.len() as i32 - 1);
+        TextOutW(dc, seg.x, seg.y, seg.text.as_ptr(), seg.text.len() as i32 - 1);
     }
     GdiFlush();
 
-    // Per-column color/opacity, then convert coverage -> premultiplied BGRA.
-    let mut columns = vec![(fg, 255u32); width as usize];
+    // Per-pixel color/opacity from each segment's box, then convert coverage -> premultiplied BGRA.
+    let mut paint = vec![(fg, 255u32); (width * height) as usize];
     for seg in &segs {
-        let end = (seg.x + seg.w + seg.gap_after).min(width);
-        for c in seg.x.max(0)..end {
-            columns[c as usize] = (seg.color, seg.opacity);
+        let (x0, x1) = (seg.x.max(0), (seg.x + seg.w).min(width));
+        let (y0, y1) = (seg.y.max(0), (seg.y + seg.h).min(height));
+        for y in y0..y1 {
+            for x in x0..x1 {
+                paint[(y * width + x) as usize] = (seg.color, seg.opacity);
+            }
         }
     }
     let px = std::slice::from_raw_parts_mut(bits as *mut u32, (width * height) as usize);
     for (i, p) in px.iter_mut().enumerate() {
-        let (color, opacity) = columns[i % width as usize];
+        let (color, opacity) = paint[i];
         let cov = ((*p >> 16) & 0xFF).max((*p >> 8) & 0xFF).max(*p & 0xFF);
         let a = cov * opacity / 255;
         // Alpha 1 keeps the whole rect clickable while staying invisible.
@@ -167,7 +222,7 @@ pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, height: i32, 
     DeleteObject(text_font);
     DeleteObject(icon_font);
     DeleteDC(dc);
-    width
+    (width, height)
 }
 
 unsafe fn font(face: &str, height: i32) -> HFONT {
