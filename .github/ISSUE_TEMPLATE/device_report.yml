@@ -1,0 +1,64 @@
+name: Device report
+description: Tell us whether a device works, so it can be added to the "tested" list (or fixed).
+title: "[Device] "
+labels: ["device report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Reports like this are how the supported-devices table grows.
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      description: Brand and model.
+      placeholder: Logitech G Pro X Superlight 2
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - Logitech receiver (Lightspeed / Unifying / Bolt)
+        - USB dongle (headset)
+        - Bluetooth
+        - USB cable
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Does it work?
+      options:
+        - "Yes, shows the right level"
+        - "Shows, but the level is wrong"
+        - "Not shown at all"
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: Expected level
+      description: What the vendor app (G HUB, Windows Settings…) shows, if the level is wrong.
+      placeholder: "G HUB says 80%, taskbar-battery says 70%"
+  - type: textarea
+    id: once
+    attributes:
+      label: Diagnostic output
+      description: |
+        Optional but very helpful. Download the source and run `cargo run -- --once` (prints detected devices),
+        or paste the device list from the right-click menu.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: taskbar-battery version
+      placeholder: v0.3.0
+  - type: input
+    id: windows
+    attributes:
+      label: Windows build
+      description: Run `winver`.
+      placeholder: Windows 11 24H2 (26100.2033)
