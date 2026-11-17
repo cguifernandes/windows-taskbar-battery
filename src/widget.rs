@@ -7,7 +7,7 @@
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
 use crate::device::{Reading, Status, Tracker};
-use crate::{bluetooth, diag, headsetcontrol, init_com, logitech, notify, playstation, render, settings, wide, xbox};
+use crate::{bluetooth, delux, diag, headsetcontrol, init_com, logitech, notify, playstation, render, settings, wide, xbox};
 use std::cell::RefCell;
 use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
@@ -171,6 +171,7 @@ fn worker(controller: usize, rx: Receiver<()>) {
         }
     };
     let mut logi = logitech::Logitech::new();
+    let mut delux = delux::Delux::default();
     let mut tracker = Tracker::default();
     let mut alerts = notify::LowBatteryAlerts::default();
     let mut bt = Vec::new();
@@ -181,6 +182,7 @@ fn worker(controller: usize, rx: Receiver<()>) {
         let _ = api.refresh_devices();
         let mut obs = logi.scan(&api);
         obs.extend(playstation::scan(&api));
+        obs.extend(delux.scan(&api));
         obs.extend(xbox::scan());
         if forced || last_bt.is_none_or(|t| t.elapsed() >= POLL_BLUETOOTH) {
             bt = bluetooth::scan();
