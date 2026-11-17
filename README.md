@@ -41,6 +41,7 @@
 | **Classic Bluetooth** | Headphones and earbuds (AirPods, Galaxy Buds, Sony…) | The battery level the device reports to Windows, the same value Settings › Bluetooth shows |
 | **Xbox controllers** | Xbox One / Series and other XInput controllers, over the Xbox Wireless adapter, Bluetooth, or USB | Windows.Gaming.Input battery report (exact capacity) |
 | **PlayStation controllers** | DualSense, DualSense Edge, DualShock 4, over USB or Bluetooth | The controller's own input report |
+| **Delux mice** | Delux and other 2.4 GHz mice on the Xenta dongle (USB ID 1D57:FA60) | The dongle's status report (charging state not detected) |
 | **Other headsets** via [HeadsetControl](#other-headsets-headsetcontrol) | SteelSeries Arctis, HyperX Cloud, Corsair, Audeze, Logitech G and more | HeadsetControl, if installed (optional) |
 
 ### Tested on real hardware
@@ -50,6 +51,7 @@
 | Logitech G Pro Wireless (mouse) | Lightspeed receiver | ✅ matches G HUB |
 | Logitech PRO X Wireless (headset) | USB dongle | ✅ matches G HUB |
 | Apple AirPods | Classic Bluetooth | ✅ |
+| Delux wireless mouse | 2.4 GHz dongle (1D57:FA60) | ✅ matches the Delux app (±2%) |
 | Bluetooth LE mouse/keyboard | Bluetooth LE | ⚠️ implemented, not yet tested on hardware |
 | Xbox / PlayStation controllers | all | ⚠️ implemented, not yet tested on hardware |
 | HeadsetControl headsets | USB dongle | ⚠️ implemented, not yet tested on hardware |
@@ -301,6 +303,7 @@ src/
 ├── bluetooth.rs       BLE battery service + classic Bluetooth battery property
 ├── xbox.rs            Xbox/XInput controllers (Windows.Gaming.Input)
 ├── playstation.rs     DualSense / DualShock 4 input reports
+├── delux.rs           Delux / generic mice on the Xenta 2.4 GHz dongle
 ├── headsetcontrol.rs  optional HeadsetControl integration
 ├── widget.rs          taskbar window, menu, tooltip, worker thread
 ├── notify.rs          low-battery notifications

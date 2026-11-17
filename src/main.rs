@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bluetooth;
+mod delux;
 mod device;
 mod diag;
 mod headsetcontrol;
@@ -40,8 +41,11 @@ fn main() {
             let api = hidapi::HidApi::new().expect("hidapi");
             let mut obs = logitech::Logitech::new().scan(&api);
             obs.extend(playstation::scan(&api));
+            let mut delux = delux::Delux::default();
+            let _ = delux.scan(&api); // opens the dongle; its status report comes every ~2 s
             let _ = xbox::scan(); // first call only starts controller enumeration
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_millis(2500));
+            obs.extend(delux.scan(&api));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
             match headsetcontrol::find() {
