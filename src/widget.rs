@@ -7,7 +7,7 @@
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
 use crate::device::{Reading, Status, Tracker};
-use crate::{bluetooth, init_com, logitech, notify, playstation, render, settings, wide, xbox};
+use crate::{bluetooth, headsetcontrol, init_com, logitech, notify, playstation, render, settings, wide, xbox};
 use std::cell::RefCell;
 use std::mem::zeroed;
 use std::ptr::{null, null_mut};
@@ -31,7 +31,8 @@ const CMD_ALERTS: usize = 4;
 const PBT_APMRESUMEAUTOMATIC: usize = 0x12;
 const CMD_DEVICE_BASE: usize = 100;
 
-/// HID++ is cheap to poll; Bluetooth reads wake the device's radio, so poll those less often.
+/// HID++ is cheap to poll. Bluetooth reads wake the device's radio and HeadsetControl spawns
+/// a process, so poll those less often.
 const POLL_LOGITECH: Duration = Duration::from_secs(15);
 const POLL_BLUETOOTH: Duration = Duration::from_secs(60);
 
@@ -164,6 +165,9 @@ fn worker(controller: usize, rx: Receiver<()>) {
         obs.extend(xbox::scan());
         if forced || last_bt.is_none_or(|t| t.elapsed() >= POLL_BLUETOOTH) {
             bt = bluetooth::scan();
+            if let Some(exe) = headsetcontrol::find() {
+                bt.extend(headsetcontrol::scan(&exe, |pid| logitech::reports_pid(&obs, pid)));
+            }
             last_bt = Some(Instant::now());
         }
         // Re-feed the last Bluetooth results between Bluetooth scans so they don't look gone.

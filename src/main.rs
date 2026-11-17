@@ -2,6 +2,7 @@
 
 mod bluetooth;
 mod device;
+mod headsetcontrol;
 mod logitech;
 mod notify;
 mod playstation;
@@ -41,6 +42,14 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(500));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
+            match headsetcontrol::find() {
+                Some(exe) => {
+                    eprintln!("[headsetcontrol] using {}", exe.display());
+                    let hc = headsetcontrol::scan(&exe, |pid| logitech::reports_pid(&obs, pid));
+                    obs.extend(hc);
+                }
+                None => eprintln!("[headsetcontrol] not found (optional)"),
+            }
             for r in device::Tracker::default().update(obs) {
                 println!("{:<10} {:<36} {}  [{}]", format!("{:?}", r.kind), r.name, r.status, r.id);
             }

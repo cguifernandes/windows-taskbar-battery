@@ -132,6 +132,13 @@ impl Logitech {
     }
 }
 
+/// Whether these observations include a Logitech device on USB product id `pid`
+/// (used to avoid listing the same headset twice via HeadsetControl).
+pub fn reports_pid(observations: &[Observation], pid: u16) -> bool {
+    let prefix = format!("logi:{pid:04x}:");
+    observations.iter().any(|o| o.id.starts_with(&prefix))
+}
+
 fn debug(id: &str, e: &Error) {
     if cfg!(debug_assertions) {
         eprintln!("[{id}] {e}");
