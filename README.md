@@ -265,6 +265,7 @@ Please run `cargo clippy -- -D warnings` before opening a PR. CI runs it too.
 
 ## Credits
 
+- [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) by krisgfx9: the original inspiration for this project, and a much broader tool (C++, dozens of brands). If your device isn't supported here, try it.
 - [Solaar](https://github.com/pwr-Solaar/Solaar): the reference for Logitech's HID++ protocol.
 - [HeadsetControl](https://github.com/Sapd/HeadsetControl): headset protocol research.
 - [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor): inspiration for the taskbar placement technique.
