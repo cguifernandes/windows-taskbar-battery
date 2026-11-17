@@ -4,9 +4,11 @@ mod bluetooth;
 mod device;
 mod logitech;
 mod notify;
+mod playstation;
 mod render;
 mod settings;
 mod widget;
+mod xbox;
 
 pub(crate) fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -34,6 +36,10 @@ fn main() {
             init_com();
             let api = hidapi::HidApi::new().expect("hidapi");
             let mut obs = logitech::Logitech::new().scan(&api);
+            obs.extend(playstation::scan(&api));
+            let _ = xbox::scan(); // first call only starts controller enumeration
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
             for r in device::Tracker::default().update(obs) {
                 println!("{:<10} {:<36} {}  [{}]", format!("{:?}", r.kind), r.name, r.status, r.id);

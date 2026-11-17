@@ -89,6 +89,9 @@ fn read_ble(dev: &BluetoothLEDevice) -> windows::core::Result<Option<Observation
     let Some(percent) = level? else { return Ok(None) };
 
     let name = dev.Name()?.to_string();
+    if name.to_ascii_lowercase().contains("xbox") {
+        return Ok(None); // reported (more precisely) by the xbox module
+    }
     Ok(Some(Observation {
         id: format!("ble:{:012x}", dev.BluetoothAddress()?),
         kind: kind.or_else(|| Some(Kind::from_name(&name))),

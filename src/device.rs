@@ -133,3 +133,44 @@ impl Tracker {
         self.known.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn obs(state: State) -> Observation {
+        Observation { id: "x".into(), name: Some("Mouse".into()), kind: Some(Kind::Mouse), state }
+    }
+
+    #[test]
+    fn kind_from_name() {
+        assert_eq!(Kind::from_name("Renan's AirPods"), Kind::Earbuds);
+        assert_eq!(Kind::from_name("AirPods Max"), Kind::Headset);
+        assert_eq!(Kind::from_name("Galaxy Buds2 Pro"), Kind::Earbuds);
+        assert_eq!(Kind::from_name("PRO X Wireless Gaming Headset"), Kind::Headset);
+        assert_eq!(Kind::from_name("MX Master 3S Mouse"), Kind::Mouse);
+    }
+
+    #[test]
+    fn sleeping_device_keeps_last_reading_dimmed() {
+        let mut t = Tracker::default();
+        t.update(vec![obs(State::Battery { percent: 80, charging: false })]);
+        let r = t.update(vec![obs(State::Unreachable)]);
+        assert_eq!(r[0].status, Status::Battery { percent: 80, charging: false, stale: true });
+    }
+
+    #[test]
+    fn vanished_device_is_not_connected() {
+        let mut t = Tracker::default();
+        t.update(vec![obs(State::Battery { percent: 80, charging: false })]);
+        assert_eq!(t.update(vec![])[0].status, Status::NotConnected);
+    }
+
+    #[test]
+    fn unknown_unreachable_device_is_ignored() {
+        let mut t = Tracker::default();
+        let mut o = obs(State::Unreachable);
+        o.name = None;
+        assert!(t.update(vec![o]).is_empty());
+    }
+}
