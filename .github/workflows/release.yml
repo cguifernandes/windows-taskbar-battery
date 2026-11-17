@@ -1,0 +1,21 @@
+name: Release
+
+# Push a tag like v0.1.0 to build and publish a release with the exe attached.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/battery-bar.exe
+          generate_release_notes: true
