@@ -15,7 +15,6 @@ windows = { version = "0.58", features = [
     "Devices_Bluetooth",
     "Devices_Bluetooth_GenericAttributeProfile",
     "Data_Xml_Dom",
-    "Devices_Enumeration",
     "Devices_Power",
     "Foundation",
     "Foundation_Collections",
@@ -45,7 +44,7 @@ windows-sys = { version = "0.59", features = [
 winresource = "0.1"
 
 [profile.release]
-opt-level = "s"
+opt-level = "z"
 lto = true
 codegen-units = 1
 strip = true

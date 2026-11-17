@@ -16,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Threading::CreateMutexW;
+use windows_sys::Win32::System::Threading::{CreateMutexW, GetCurrentProcess, SetProcessWorkingSetSize};
 use windows_sys::Win32::UI::Controls::*;
 use windows_sys::Win32::UI::HiDpi::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
@@ -185,6 +185,7 @@ fn worker(controller: usize, rx: Receiver<()>) {
         alerts.check(&readings);
         *READINGS.lock().unwrap() = Some(readings);
         unsafe { PostMessageW(controller as HWND, WM_APP_UPDATE, 0, 0) };
+        trim_working_set();
 
         forced = match rx.recv_timeout(POLL_LOGITECH) {
             Ok(()) => {
@@ -197,6 +198,12 @@ fn worker(controller: usize, rx: Receiver<()>) {
             Err(RecvTimeoutError::Disconnected) => return,
         };
     }
+}
+
+/// The app is idle between scans, so hand its pages back to Windows until the next one.
+/// They move to the standby list and come back cheaply when touched.
+fn trim_working_set() {
+    unsafe { SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX) };
 }
 
 fn wake() {

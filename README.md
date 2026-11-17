@@ -5,7 +5,7 @@
 ![taskbar-battery on the Windows 11 taskbar](docs/screenshot.png)
 
 - **Automatic:** detects Logitech wireless devices, Bluetooth devices, and Xbox/PlayStation controllers on its own, with nothing to configure.
-- **Lightweight:** a single ~500 KB executable written in Rust. It uses under 20 MB of RAM, has no installer or runtime dependencies, and sits idle between checks.
+- **Lightweight:** a single ~600 KB executable written in Rust. It uses about 1 MB of memory as shown in Task Manager, has no installer or runtime dependencies (not even the Visual C++ runtime), and sits idle between checks.
 - **Accurate:** for Logitech devices that report a voltage, it uses G HUB's own battery curves (when G HUB is installed), so the percentages match what G HUB shows.
 - **Native look:** follows the light/dark taskbar theme, scales with DPI, and uses Windows' own Fluent icons.
 - **Low battery alerts:** a Windows notification when a device drops to 15%.
@@ -182,8 +182,8 @@ If `headsetcontrol.exe` (or `headsetcontrol-windows-x86_64.exe`) is next to `tas
 
 | | |
 |---|---|
-| Executable | ~500 KB, no installer, no DLLs |
-| Memory | under 20 MB |
+| Executable | ~600 KB, no installer, no DLLs (C runtime linked statically) |
+| Memory | ~1 MB private working set (Task Manager's "Memory" column), ~4 MB committed. Pages are handed back to Windows after each check |
 | CPU | idle between checks. A Logitech scan takes well under a second |
 | Disk / registry | only the settings listed under [Uninstall](#uninstall) |
 | Network | none |

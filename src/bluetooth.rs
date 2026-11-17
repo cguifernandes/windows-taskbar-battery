@@ -13,7 +13,6 @@ use windows::Devices::Bluetooth::GenericAttributeProfile::{
     GattCharacteristicUuids, GattCommunicationStatus, GattDeviceService, GattServiceUuids,
 };
 use windows::Devices::Bluetooth::{BluetoothCacheMode, BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice};
-use windows::Devices::Enumeration::DeviceInformation;
 use windows::Foundation::Collections::IVectorView;
 use windows::Storage::Streams::DataReader;
 use windows_sys::core::GUID;
@@ -28,9 +27,7 @@ const BATTERY_LEVEL_KEY: DEVPROPKEY = DEVPROPKEY {
 
 pub fn scan() -> Vec<Observation> {
     let mut out = Vec::new();
-    if let Err(e) = scan_ble(&mut out) {
-        debug(&format!("ble scan: {e}"));
-    }
+    scan_ble(&mut out);
     scan_classic(&mut out);
     out
 }
@@ -41,20 +38,33 @@ fn debug(msg: &str) {
     }
 }
 
-fn scan_ble(out: &mut Vec<Observation>) -> windows::core::Result<()> {
-    let selector = BluetoothLEDevice::GetDeviceSelectorFromConnectionStatus(BluetoothConnectionStatus::Connected)?;
-    let infos = DeviceInformation::FindAllAsyncAqsFilter(&selector)?.get()?;
-    for i in 0..infos.Size()? {
-        let info = infos.GetAt(i)?;
-        let Ok(dev) = BluetoothLEDevice::FromIdAsync(&info.Id()?)?.get() else { continue };
-        match read_ble(&dev) {
-            Ok(Some(o)) => out.push(o),
-            Ok(None) => {}
-            Err(e) => debug(&format!("{}: {e}", dev.Name().unwrap_or_default())),
+/// Paired LE devices are found through SetupAPI rather than a WinRT device query: the query
+/// syntax (AQS) loads Windows' search and language stack, which costs more memory than the
+/// rest of the app.
+fn scan_ble(out: &mut Vec<Observation>) {
+    let mut seen = HashSet::new();
+    for (id, _) in nodes("BTHLE") {
+        let Some(addr) = ble_address(&id) else { continue };
+        if !seen.insert(addr) {
+            continue;
+        }
+        let Ok(dev) = BluetoothLEDevice::FromBluetoothAddressAsync(addr).and_then(|op| op.get()) else { continue };
+        if dev.ConnectionStatus().is_ok_and(|s| s == BluetoothConnectionStatus::Connected) {
+            debug(&format!("ble {addr:012x} connected: {}", dev.Name().unwrap_or_default()));
+            match read_ble(&dev) {
+                Ok(Some(o)) => out.push(o),
+                Ok(None) => {}
+                Err(e) => debug(&format!("{}: {e}", dev.Name().unwrap_or_default())),
+            }
         }
         let _ = dev.Close();
     }
-    Ok(())
+}
+
+/// "BTHLE\DEV_F4EE25FBBA46\7&16AA5920&0&F4EE25FBBA46" -> 0xF4EE25FBBA46
+fn ble_address(id: &str) -> Option<u64> {
+    let mac = id.split('\\').nth(1)?.strip_prefix("DEV_")?;
+    (mac.len() == 12).then(|| u64::from_str_radix(mac, 16).ok()).flatten()
 }
 
 fn read_ble(dev: &BluetoothLEDevice) -> windows::core::Result<Option<Observation>> {
@@ -153,9 +163,17 @@ fn scan_classic(out: &mut Vec<Observation>) {
 
 /// (bluetooth address, level) for every present BTHENUM device node carrying the battery property.
 fn classic_levels() -> Vec<(u64, u8)> {
+    nodes("BTHENUM")
+        .into_iter()
+        .filter_map(|(id, level)| Some((address_from_instance_id(&id)?, level?)))
+        .collect()
+}
+
+/// (instance id, battery level if the node has one) for every present device node of `enumerator`.
+fn nodes(enumerator: &str) -> Vec<(String, Option<u8>)> {
     let mut out = Vec::new();
     unsafe {
-        let enumerator = wide("BTHENUM");
+        let enumerator = wide(enumerator);
         let set = SetupDiGetClassDevsW(null(), enumerator.as_ptr(), null_mut(), DIGCF_ALLCLASSES | DIGCF_PRESENT);
         if set as isize == -1 {
             return out;
@@ -170,17 +188,14 @@ fn classic_levels() -> Vec<(u64, u8)> {
             i += 1;
             let (mut ptype, mut needed) = (0u32, 0u32);
             let mut level = [0u8; 4];
-            if SetupDiGetDevicePropertyW(set, &data, &BATTERY_LEVEL_KEY, &mut ptype, level.as_mut_ptr(), 4, &mut needed, 0) == 0 {
-                continue;
-            }
+            let has_level =
+                SetupDiGetDevicePropertyW(set, &data, &BATTERY_LEVEL_KEY, &mut ptype, level.as_mut_ptr(), 4, &mut needed, 0) != 0;
             let mut id = [0u16; 512];
             if SetupDiGetDeviceInstanceIdW(set, &data, id.as_mut_ptr(), id.len() as u32, &mut needed) == 0 {
                 continue;
             }
             let len = id.iter().position(|c| *c == 0).unwrap_or(id.len());
-            if let Some(addr) = address_from_instance_id(&String::from_utf16_lossy(&id[..len])) {
-                out.push((addr, level[0]));
-            }
+            out.push((String::from_utf16_lossy(&id[..len]), has_level.then_some(level[0])));
         }
         SetupDiDestroyDeviceInfoList(set);
     }
@@ -192,4 +207,19 @@ fn address_from_instance_id(id: &str) -> Option<u64> {
     let last = id.rsplit('\\').next()?;
     let mac = last.rsplit('&').next()?.split('_').next()?;
     (mac.len() == 12).then(|| u64::from_str_radix(mac, 16).ok()).flatten()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_addresses() {
+        assert_eq!(ble_address(r"BTHLE\DEV_F4EE25FBBA46\7&16AA5920&0&F4EE25FBBA46"), Some(0xF4EE25FBBA46));
+        assert_eq!(ble_address(r"BTHLE\GENERIC_ATTRIBUTE\7&1"), None);
+        assert_eq!(
+            address_from_instance_id(r"BTHENUM\{0000111E-0000-1000-8000-00805F9B34FB}_VID&0001004C_PID&2014\7&3057B904&0&F5CFD77BCB0B_C00000000"),
+            Some(0xF5CFD77BCB0B)
+        );
+    }
 }
