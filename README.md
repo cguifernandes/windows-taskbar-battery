@@ -11,6 +11,9 @@
 - **Low battery alerts:** a Windows notification when a device drops to 15%.
 - **Private:** everything stays on your PC. There are no network requests, no telemetry, and no accounts.
 
+> [!NOTE]
+> This project was fully built with Claude Opus 5.5.
+
 ---
 
 ## Contents
