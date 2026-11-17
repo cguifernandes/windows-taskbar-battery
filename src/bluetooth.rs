@@ -68,7 +68,12 @@ fn read_ble(dev: &BluetoothLEDevice) -> windows::core::Result<Option<Observation
             3 | 4 => Some(Kind::Gamepad),
             _ => None,
         },
-        0x25 => Some(Kind::Headset), // wearable audio device
+        // Wearable audio device: 0x0941 earbud, 0x0942 headset, 0x0943 headphones.
+        0x25 => match appearance & 0x3F {
+            1 => Some(Kind::Earbuds),
+            2 | 3 => Some(Kind::Headset),
+            _ => None, // generic: decide by name
+        },
         _ => None,
     };
 
@@ -121,7 +126,12 @@ fn scan_classic(out: &mut Vec<Observation>) {
         let name = dev.Name().map(|n| n.to_string()).unwrap_or_default();
         let cod = dev.ClassOfDevice().and_then(|c| c.RawValue()).unwrap_or(0);
         let kind = match ((cod >> 8) & 0x1F, (cod >> 2) & 0x3F) {
-            (0x04, _) => Kind::Headset,                  // audio/video
+            // Audio/video. The minor class rarely separates earbuds from headphones
+            // (AirPods report "headphones"), so the name decides.
+            (0x04, _) => match Kind::from_name(&name) {
+                Kind::Earbuds => Kind::Earbuds,
+                _ => Kind::Headset,
+            },
             (0x05, minor) if minor & 0x20 != 0 => Kind::Mouse, // peripheral: pointing
             (0x05, minor) if minor & 0x10 != 0 => Kind::Keyboard,
             (0x05, _) => Kind::Gamepad,

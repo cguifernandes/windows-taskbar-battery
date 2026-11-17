@@ -6,6 +6,7 @@ use std::collections::HashSet;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Kind {
     Headset,
+    Earbuds,
     Mouse,
     Keyboard,
     Gamepad,
@@ -15,8 +16,10 @@ pub enum Kind {
 impl Kind {
     pub fn from_name(name: &str) -> Kind {
         let n = name.to_ascii_lowercase();
-        if ["headset", "headphone", "earbud", "buds", "airpods"].iter().any(|k| n.contains(k)) {
+        if ["headset", "headphone", "airpods max"].iter().any(|k| n.contains(k)) {
             Kind::Headset
+        } else if ["earbud", "buds", "airpods", "earphone", "in-ear"].iter().any(|k| n.contains(k)) {
+            Kind::Earbuds
         } else if n.contains("mouse") {
             Kind::Mouse
         } else if n.contains("keyboard") || n.contains("keys") {

@@ -6,7 +6,7 @@
 //!   just left of the notification area. It dies with Explorer and gets recreated.
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
-use crate::device::{Reading, Tracker};
+use crate::device::{Reading, Status, Tracker};
 use crate::{bluetooth, init_com, logitech, render, settings, wide};
 use std::cell::RefCell;
 use std::mem::zeroed;
@@ -56,7 +56,7 @@ fn with<R>(f: impl FnOnce(&mut App) -> R) -> R {
 
 pub fn run() {
     unsafe {
-        let mutex_name = wide(r"Local\battery-bar");
+        let mutex_name = wide(r"Local\taskbar-battery");
         CreateMutexW(null(), 0, mutex_name.as_ptr());
         if GetLastError() == ERROR_ALREADY_EXISTS {
             return; // already running
@@ -65,9 +65,9 @@ pub fn run() {
         settings::ensure_autostart();
 
         let hinst = GetModuleHandleW(null());
-        let ctrl_class = wide("BatteryBarController");
+        let ctrl_class = wide("TaskbarBatteryController");
         register(hinst, &ctrl_class, controller_proc);
-        register(hinst, &wide("BatteryBarWidget"), widget_proc);
+        register(hinst, &wide("TaskbarBatteryWidget"), widget_proc);
 
         let taskbar_created = RegisterWindowMessageW(wide("TaskbarCreated").as_ptr());
         let controller = CreateWindowExW(
@@ -176,7 +176,7 @@ unsafe fn ensure_widget() {
     if tray.is_null() {
         return; // Explorer not up yet; the timer retries.
     }
-    let class = wide("BatteryBarWidget");
+    let class = wide("TaskbarBatteryWidget");
     let w = CreateWindowExW(
         WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
         class.as_ptr(),
@@ -208,7 +208,12 @@ unsafe fn redraw() {
     GetWindowRect(tray, &mut tr);
     let dpi = GetDpiForWindow(tray).max(96);
     let hidden = settings::hidden_devices();
-    let items: Vec<_> = readings().into_iter().filter(|r| !hidden.contains(&r.id)).map(|r| (r.kind, r.status)).collect();
+    // Disconnected devices drop off the bar (they stay listed in the right-click menu).
+    let items: Vec<_> = readings()
+        .into_iter()
+        .filter(|r| !hidden.contains(&r.id) && r.status != Status::NotConnected)
+        .map(|r| (r.kind, r.status))
+        .collect();
     let width = if items.is_empty() { 0 } else { render::draw(widget, &items, dpi, tr.bottom - tr.top, light) };
     with(|a| a.width = width);
     place();

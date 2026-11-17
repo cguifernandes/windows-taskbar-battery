@@ -11,11 +11,15 @@ use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::{UpdateLayeredWindow, ULW_ALPHA};
 
 const LOW_BATTERY: u8 = 15;
+/// Newer glyph (clearer at small sizes); older Segoe Fluent Icons versions only have the pair.
+const EARBUD_SINGLE: &str = "\u{F27C}";
+const EARBUD_PAIR: &str = "\u{F4C0}";
 
 /// Segoe Fluent Icons glyph per device kind.
 fn icon(kind: Kind) -> &'static str {
     match kind {
         Kind::Headset => "\u{E7F6}",
+        Kind::Earbuds => EARBUD_SINGLE, // swapped for EARBUD_PAIR if the font lacks it
         Kind::Mouse => "\u{E962}",
         Kind::Keyboard => "\u{E765}",
         Kind::Gamepad => "\u{E7FC}",
@@ -60,6 +64,16 @@ pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, height: i32, 
     ReleaseDC(null_mut(), screen);
     let text_font = font("Segoe UI", -s(12));
     let icon_font = font("Segoe Fluent Icons", -s(15));
+
+    // Fall back to the earbud pair if this font version lacks the single earbud.
+    SelectObject(dc, icon_font);
+    let single = wide(EARBUD_SINGLE);
+    let mut glyph = 0u16;
+    if GetGlyphIndicesW(dc, single.as_ptr(), 1, &mut glyph, GGI_MARK_NONEXISTING_GLYPHS) == GDI_ERROR as u32 || glyph == 0xFFFF {
+        for seg in segs.iter_mut().filter(|s| s.text == single) {
+            seg.text = wide(EARBUD_PAIR);
+        }
+    }
 
     // Layout.
     let pad = s(6);

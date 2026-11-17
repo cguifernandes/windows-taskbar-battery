@@ -3,16 +3,6 @@
 version = 4
 
 [[package]]
-name = "battery-bar"
-version = "0.1.0"
-dependencies = [
- "embed-manifest",
- "hidapi",
- "windows",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "cc"
 version = "1.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -98,6 +88,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "taskbar-battery"
+version = "0.1.0"
+dependencies = [
+ "embed-manifest",
+ "hidapi",
+ "windows",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

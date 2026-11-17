@@ -63,7 +63,13 @@ impl Logitech {
 
     fn probe(&mut self, link: &Link, ep: &Endpoint, index: u8, via_receiver: bool) -> Option<Observation> {
         let id = format!("logi:{:04x}:{}:{:02x}", ep.pid, ep.iface, index);
-        let raw = match battery(link, index) {
+        let mut result = battery(link, index);
+        if via_receiver && matches!(result, Err(Error::Timeout)) && !self.identities.contains_key(&id) {
+            // A sleeping device times out on the first request but wakes up from it. Retry
+            // once to discover it; known devices aren't woken (it costs them battery).
+            result = battery(link, index);
+        }
+        let raw = match result {
             Ok(Raw::NoBattery) => return None,
             Ok(raw) => raw,
             Err(Error::Protocol(ERR_UNKNOWN_DEVICE)) if via_receiver => return None, // empty slot

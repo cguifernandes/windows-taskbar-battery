@@ -17,5 +17,5 @@ jobs:
       - run: cargo build --release --locked
       - uses: softprops/action-gh-release@v2
         with:
-          files: target/release/battery-bar.exe
+          files: target/release/taskbar-battery.exe
           generate_release_notes: true

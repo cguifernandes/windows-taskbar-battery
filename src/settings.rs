@@ -7,8 +7,8 @@ use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::System::Registry::*;
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-const APP_KEY: &str = r"Software\battery-bar";
-const RUN_VALUE: &str = "BatteryBar";
+const APP_KEY: &str = r"Software\taskbar-battery";
+const RUN_VALUE: &str = "TaskbarBattery";
 
 pub fn light_theme() -> bool {
     read_dword(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme") == Some(1)
