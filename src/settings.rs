@@ -54,10 +54,23 @@ pub fn set_alerts(on: bool) {
     write_dword(APP_KEY, "LowBatteryAlerts", u32::from(on));
 }
 
-/// Registers the AppUserModelID so Windows accepts our toast notifications.
+const NOTIFICATION_ICON: &[u8] = include_bytes!("../assets/icon-64.png");
+
+/// Registers the AppUserModelID so Windows accepts our toast notifications, with our icon
+/// (written to %LOCALAPPDATA%\taskbar-battery\icon.png, since Windows needs a file).
 pub fn register_app_id() {
     let key = format!(r"Software\Classes\AppUserModelId\{}", crate::notify::APP_ID);
-    let (k, n, data) = (wide(&key), wide("DisplayName"), wide("Taskbar Battery"));
+    write_string(&key, "DisplayName", "Taskbar Battery");
+    if let Some(dir) = std::env::var_os("LOCALAPPDATA").map(|d| std::path::PathBuf::from(d).join("taskbar-battery")) {
+        let icon = dir.join("icon.png");
+        if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&icon, NOTIFICATION_ICON).is_ok() {
+            write_string(&key, "IconUri", &icon.to_string_lossy());
+        }
+    }
+}
+
+fn write_string(key: &str, name: &str, value: &str) {
+    let (k, n, data) = (wide(key), wide(name), wide(value));
     unsafe {
         RegSetKeyValueW(HKEY_CURRENT_USER, k.as_ptr(), n.as_ptr(), REG_SZ, data.as_ptr() as *const c_void, (data.len() * 2) as u32);
     }

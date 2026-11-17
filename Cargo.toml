@@ -2,6 +2,9 @@
 name = "taskbar-battery"
 version = "0.2.0"
 edition = "2021"
+description = "Battery levels of wireless devices on the Windows taskbar"
+license = "MIT"
+repository = "https://github.com/renanleonel/windows-taskbar-battery"
 
 [dependencies]
 hidapi = "2.6"
@@ -38,8 +41,8 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [build-dependencies]
-# Win8+ compatibility manifest is required for layered child windows; also sets per-monitor DPI.
-embed-manifest = "1.4"
+# Icon, version info and manifest (see build.rs).
+winresource = "0.1"
 
 [profile.release]
 opt-level = "s"
