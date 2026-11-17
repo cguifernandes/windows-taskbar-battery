@@ -8,6 +8,7 @@
 - **Lightweight:** a single ~300 KB executable written in Rust. It uses under 20 MB of RAM, has no installer or runtime dependencies, and sits idle between checks.
 - **Accurate:** for Logitech devices that report a voltage, it uses G HUB's own battery curves (when G HUB is installed), so the percentages match what G HUB shows.
 - **Native look:** follows the light/dark taskbar theme, scales with DPI, and uses Windows' own Fluent icons.
+- **Low battery alerts:** a Windows notification when a device drops to 15%.
 - **Private:** everything stays on your PC. There are no network requests, no telemetry, and no accounts.
 
 ---
@@ -75,11 +76,13 @@ Razer, SteelSeries, Corsair, HyperX and other **2.4 GHz dongles** each use their
 
 | What you see | Meaning |
 |---|---|
-| 🎧 `85%` | Battery level |
-| White/black text | Normal. The color follows your taskbar theme |
+| 🎧 `85%` | Battery level. Text color follows your taskbar theme |
 | **Red** text | Battery at 15% or below |
-| **Green** text | Charging (Logitech devices) |
+| `64%` + green **⚡** | Charging (Logitech devices) |
+| **Dimmed** text | Device is asleep. Shows its last known level |
 | Device not shown | Not connected, or hidden in the menu |
+
+![All widget states: charging, low, asleep, normal](docs/states.png)
 
 Device types have their own icons: headset, earbuds, mouse, keyboard, gamepad, and a generic battery icon for anything else. Devices are shown in that order.
 
@@ -89,6 +92,7 @@ Right-click the widget to see:
 
 - **Every detected device** with its current level, including disconnected ones. Uncheck a device to hide it from the taskbar, check it again to bring it back.
 - **Refresh now:** checks all devices immediately.
+- **Low battery alerts:** a Windows notification when a device drops to 15%, sent once per discharge. It re-arms after the device is charged or climbs above 20%. On by default.
 - **Start with Windows:** turn launching at login on or off. It's on by default.
 - **Exit**
 
@@ -99,10 +103,11 @@ Right-click the widget to see:
 | Logitech | every 15 s |
 | Bluetooth | every 60 s (reading wakes the device's radio, so it's polled less often) |
 | Any USB device plugged in or out | immediately |
+| PC wakes from sleep | immediately |
 
 ### Sleeping devices
 
-Logitech mice and keyboards go to sleep after a short idle period and stop answering. While asleep, the widget keeps showing the **last known level**, because the battery doesn't change while a device sleeps. It doesn't wake the device to check, since that would drain the battery you're trying to watch.
+Logitech mice and keyboards go to sleep after a short idle period and stop answering. While asleep, the widget keeps showing the **last known level, dimmed**, because the battery doesn't change while a device sleeps. It doesn't wake the device to check, since that would drain the battery you're trying to watch.
 
 A device that's switched off looks the same to the receiver as one that's asleep, so it also keeps its last reading. A headset that's switched off is detected as off and removed from the bar.
 
@@ -192,14 +197,19 @@ It works alongside G HUB: requests are tagged with their own software ID, so the
 
 1. Right-click the widget → uncheck **Start with Windows** → **Exit**.
 2. Delete `taskbar-battery.exe`.
-3. Optionally, remove its settings with `reg delete HKCU\Software\taskbar-battery /f`.
+3. Optionally, remove its settings:
+   ```
+   reg delete HKCU\Software\taskbar-battery /f
+   reg delete HKCU\Software\Classes\AppUserModelId\TaskbarBattery /f
+   ```
 
 Everything it writes:
 
 | Location | Purpose |
 |---|---|
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `TaskbarBattery` | Start with Windows |
-| `HKCU\Software\taskbar-battery` → `AutostartOptOut`, `Hidden` | Your menu choices |
+| `HKCU\Software\taskbar-battery` → `AutostartOptOut`, `Hidden`, `LowBatteryAlerts` | Your menu choices |
+| `HKCU\Software\Classes\AppUserModelId\TaskbarBattery` | Lets Windows show its notifications |
 
 ---
 
@@ -219,6 +229,8 @@ Debug builds keep a console window and print diagnostics. They also don't regist
 cargo run                        # run the widget with logs
 cargo run -- --once              # print detected devices and exit
 cargo run -- --list              # list Logitech HID interfaces
+cargo run -- --demo              # show fake readings covering every visual state
+cargo run -- --test-toast        # show a sample low-battery notification
 ```
 
 Example `--once` output:
@@ -241,6 +253,7 @@ src/
 │   └── curve.rs       voltage → % (G HUB curves or generic)
 ├── bluetooth.rs       BLE battery service + classic Bluetooth battery property
 ├── widget.rs          taskbar window, menu, worker thread
+├── notify.rs          low-battery notifications
 ├── render.rs          drawing (per-pixel alpha text and icons)
 └── settings.rs        registry: start with Windows, hidden devices, theme
 ```

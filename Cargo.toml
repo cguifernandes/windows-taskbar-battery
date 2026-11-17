@@ -1,6 +1,6 @@
-[package]
+﻿[package]
 name = "taskbar-battery"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -9,10 +9,12 @@ hidapi = "2.6"
 windows = { version = "0.58", features = [
     "Devices_Bluetooth",
     "Devices_Bluetooth_GenericAttributeProfile",
+    "Data_Xml_Dom",
     "Devices_Enumeration",
     "Foundation",
     "Foundation_Collections",
     "Storage_Streams",
+    "UI_Notifications",
     "Win32_System_Com",
 ] }
 # Plain Win32 (window, GDI, registry, SetupAPI).

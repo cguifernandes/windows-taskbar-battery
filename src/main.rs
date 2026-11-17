@@ -3,6 +3,7 @@
 mod bluetooth;
 mod device;
 mod logitech;
+mod notify;
 mod render;
 mod settings;
 mod widget;
@@ -21,6 +22,13 @@ pub(crate) fn init_com() {
 fn main() {
     match std::env::args().nth(1).as_deref() {
         // Debug helpers (they print only in debug builds; release builds have no console).
+        Some("--test-toast") => {
+            init_com();
+            settings::register_app_id();
+            if let Err(e) = notify::show("Low battery", "G Pro Wireless is at 12%. Time to charge it.") {
+                eprintln!("toast failed: {e}");
+            }
+        }
         Some("--list") => logitech::hidpp::list(&hidapi::HidApi::new().expect("hidapi")),
         Some("--once") => {
             init_com();
@@ -30,6 +38,10 @@ fn main() {
             for r in device::Tracker::default().update(obs) {
                 println!("{:<10} {:<36} {}  [{}]", format!("{:?}", r.kind), r.name, r.status, r.id);
             }
+        }
+        Some("--demo") if cfg!(debug_assertions) => {
+            widget::DEMO.store(true, std::sync::atomic::Ordering::Relaxed);
+            widget::run();
         }
         _ => widget::run(),
     }

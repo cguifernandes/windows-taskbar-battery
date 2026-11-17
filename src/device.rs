@@ -54,15 +54,24 @@ pub struct Observation {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Status {
-    Battery { percent: u8, charging: bool },
+    /// `stale`: last known reading of a device that's asleep right now.
+    Battery { percent: u8, charging: bool, stale: bool },
     NotConnected,
 }
 
 impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Status::Battery { percent, charging: true } => write!(f, "{percent}% (charging)"),
-            Status::Battery { percent, .. } => write!(f, "{percent}%"),
+            Status::Battery { percent, charging, stale } => {
+                write!(f, "{percent}%")?;
+                if *charging {
+                    write!(f, " (charging)")?;
+                }
+                if *stale {
+                    write!(f, " (asleep)")?;
+                }
+                Ok(())
+            }
             Status::NotConnected => write!(f, "not connected"),
         }
     }
@@ -90,8 +99,11 @@ impl Tracker {
             seen.insert(o.id.clone());
             let pos = self.known.iter().position(|r| r.id == o.id);
             let status = match (o.state, pos.map(|p| self.known[p].status)) {
-                (State::Battery { percent, charging }, _) => Status::Battery { percent, charging },
-                (State::Unreachable, Some(prev)) => prev, // asleep: battery hasn't changed
+                (State::Battery { percent, charging }, _) => Status::Battery { percent, charging, stale: false },
+                // Asleep: battery hasn't changed, keep the last reading but mark it.
+                (State::Unreachable, Some(Status::Battery { percent, charging, .. })) => {
+                    Status::Battery { percent, charging, stale: true }
+                }
                 (State::Unreachable | State::Off, _) => Status::NotConnected,
             };
             match pos {

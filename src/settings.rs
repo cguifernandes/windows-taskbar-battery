@@ -46,6 +46,23 @@ pub fn ensure_autostart() {
     set_autostart(true);
 }
 
+pub fn alerts_enabled() -> bool {
+    read_dword(APP_KEY, "LowBatteryAlerts") != Some(0)
+}
+
+pub fn set_alerts(on: bool) {
+    write_dword(APP_KEY, "LowBatteryAlerts", u32::from(on));
+}
+
+/// Registers the AppUserModelID so Windows accepts our toast notifications.
+pub fn register_app_id() {
+    let key = format!(r"Software\Classes\AppUserModelId\{}", crate::notify::APP_ID);
+    let (k, n, data) = (wide(&key), wide("DisplayName"), wide("Taskbar Battery"));
+    unsafe {
+        RegSetKeyValueW(HKEY_CURRENT_USER, k.as_ptr(), n.as_ptr(), REG_SZ, data.as_ptr() as *const c_void, (data.len() * 2) as u32);
+    }
+}
+
 /// Device ids the user unchecked in the menu.
 pub fn hidden_devices() -> Vec<String> {
     read_string(APP_KEY, "Hidden").map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()

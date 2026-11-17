@@ -7,7 +7,7 @@
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
 use crate::device::{Reading, Status, Tracker};
-use crate::{bluetooth, init_com, logitech, render, settings, wide};
+use crate::{bluetooth, init_com, logitech, notify, render, settings, wide};
 use std::cell::RefCell;
 use std::mem::zeroed;
 use std::ptr::{null, null_mut};
@@ -26,6 +26,9 @@ const TIMER_PLACE: usize = 1;
 const CMD_REFRESH: usize = 1;
 const CMD_AUTOSTART: usize = 2;
 const CMD_EXIT: usize = 3;
+const CMD_ALERTS: usize = 4;
+/// WM_POWERBROADCAST: resumed from sleep/hibernate.
+const PBT_APMRESUMEAUTOMATIC: usize = 0x12;
 const CMD_DEVICE_BASE: usize = 100;
 
 /// HID++ is cheap to poll; Bluetooth reads wake the device's radio, so poll those less often.
@@ -63,6 +66,7 @@ pub fn run() {
         }
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         settings::ensure_autostart();
+        settings::register_app_id();
 
         let hinst = GetModuleHandleW(null());
         let ctrl_class = wide("TaskbarBatteryController");
@@ -119,11 +123,36 @@ unsafe fn register(hinst: HINSTANCE, class: &[u16], proc_: unsafe extern "system
     RegisterClassW(&wc);
 }
 
+/// Debug builds: `--demo` shows fixed fake readings covering every visual state.
+pub static DEMO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn demo_readings() -> Vec<Reading> {
+    use crate::device::Kind;
+    let r = |name: &str, kind, percent, charging, stale| Reading {
+        id: name.into(),
+        name: name.into(),
+        kind,
+        status: Status::Battery { percent, charging, stale },
+    };
+    vec![
+        r("Headset", Kind::Headset, 64, true, false),
+        r("Earbuds", Kind::Earbuds, 12, false, false),
+        r("Mouse", Kind::Mouse, 87, false, true),
+        r("Keyboard", Kind::Keyboard, 45, false, false),
+    ]
+}
+
 fn worker(controller: usize, rx: Receiver<()>) {
+    if DEMO.load(std::sync::atomic::Ordering::Relaxed) {
+        *READINGS.lock().unwrap() = Some(demo_readings());
+        unsafe { PostMessageW(controller as HWND, WM_APP_UPDATE, 0, 0) };
+        return;
+    }
     init_com();
     let Ok(mut api) = hidapi::HidApi::new() else { return };
     let mut logi = logitech::Logitech::new();
     let mut tracker = Tracker::default();
+    let mut alerts = notify::LowBatteryAlerts::default();
     let mut bt = Vec::new();
     let mut last_bt: Option<Instant> = None;
     let mut forced = true;
@@ -137,7 +166,9 @@ fn worker(controller: usize, rx: Receiver<()>) {
         }
         // Re-feed the last Bluetooth results between Bluetooth scans so they don't look gone.
         obs.extend(bt.iter().cloned());
-        *READINGS.lock().unwrap() = Some(tracker.update(obs));
+        let readings = tracker.update(obs);
+        alerts.check(&readings);
+        *READINGS.lock().unwrap() = Some(readings);
         unsafe { PostMessageW(controller as HWND, WM_APP_UPDATE, 0, 0) };
 
         forced = match rx.recv_timeout(POLL_LOGITECH) {
@@ -275,9 +306,11 @@ unsafe fn show_menu(hwnd: HWND) {
     }
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     let (refresh, autostart, exit) = (wide("Refresh now"), wide("Start with Windows"), wide("Exit"));
-    let check = if settings::autostart_enabled() { MF_CHECKED } else { MF_UNCHECKED };
+    let alerts = wide("Low battery alerts");
+    let checked = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
     AppendMenuW(menu, MF_STRING, CMD_REFRESH, refresh.as_ptr());
-    AppendMenuW(menu, MF_STRING | check, CMD_AUTOSTART, autostart.as_ptr());
+    AppendMenuW(menu, MF_STRING | checked(settings::alerts_enabled()), CMD_ALERTS, alerts.as_ptr());
+    AppendMenuW(menu, MF_STRING | checked(settings::autostart_enabled()), CMD_AUTOSTART, autostart.as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     AppendMenuW(menu, MF_STRING, CMD_EXIT, exit.as_ptr());
 
@@ -292,6 +325,7 @@ unsafe fn show_menu(hwnd: HWND) {
         0 => {}
         CMD_REFRESH => wake(),
         CMD_AUTOSTART => settings::set_autostart(!settings::autostart_enabled()),
+        CMD_ALERTS => settings::set_alerts(!settings::alerts_enabled()),
         CMD_EXIT => {
             let widget = with(|a| a.widget);
             if !widget.is_null() {
@@ -323,6 +357,12 @@ unsafe extern "system" fn controller_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: 
         }
         WM_DEVICECHANGE => {
             wake();
+            return 1;
+        }
+        WM_POWERBROADCAST => {
+            if wp == PBT_APMRESUMEAUTOMATIC {
+                wake(); // PC woke from sleep: devices may have changed meanwhile
+            }
             return 1;
         }
         WM_APP_MENU => show_menu(hwnd),

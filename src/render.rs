@@ -10,7 +10,10 @@ use windows_sys::Win32::Foundation::{HWND, POINT, SIZE};
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::{UpdateLayeredWindow, ULW_ALPHA};
 
-const LOW_BATTERY: u8 = 15;
+pub const LOW_BATTERY: u8 = 15;
+const BOLT: &str = "\u{E945}";
+/// Opacity for the last known value of a sleeping device.
+const STALE_OPACITY: u32 = 130;
 /// Newer glyph (clearer at small sizes); older Segoe Fluent Icons versions only have the pair.
 const EARBUD_SINGLE: &str = "\u{F27C}";
 const EARBUD_PAIR: &str = "\u{F4C0}";
@@ -46,17 +49,32 @@ pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, height: i32, 
     let green = if light { 0x0F7B0F } else { 0x6CCB5F };
 
     let mut segs = Vec::new();
+    let seg = |text: &str, icon: bool, color: u32, opacity: u32, gap_after: i32| Seg {
+        text: wide(text),
+        icon,
+        color,
+        opacity,
+        x: 0,
+        w: 0,
+        h: 0,
+        gap_after,
+    };
     for (i, (kind, status)) in items.iter().enumerate() {
-        let (label, color, opacity) = match *status {
-            Status::Battery { percent, charging } => {
-                let color = if charging { green } else if percent <= LOW_BATTERY { red } else { fg };
-                (format!("{percent}%"), color, 255)
+        let gap = if i == items.len() - 1 { 0 } else { s(12) };
+        let (label, color, opacity, charging) = match *status {
+            Status::Battery { percent, charging, stale } => {
+                let color = if percent <= LOW_BATTERY && !charging { red } else { fg };
+                (format!("{percent}%"), color, if stale { STALE_OPACITY } else { 255 }, charging)
             }
-            Status::NotConnected => ("—".to_string(), fg, 110),
+            Status::NotConnected => ("—".to_string(), fg, 110, false),
         };
-        let last = i == items.len() - 1;
-        segs.push(Seg { text: wide(icon(*kind)), icon: true, color, opacity, x: 0, w: 0, h: 0, gap_after: s(5) });
-        segs.push(Seg { text: wide(&label), icon: false, color, opacity, x: 0, w: 0, h: 0, gap_after: if last { 0 } else { s(12) } });
+        segs.push(seg(icon(*kind), true, color, opacity, s(5)));
+        if charging {
+            segs.push(seg(&label, false, color, opacity, s(2)));
+            segs.push(seg(BOLT, true, green, opacity, gap));
+        } else {
+            segs.push(seg(&label, false, color, opacity, gap));
+        }
     }
 
     let screen = GetDC(null_mut());

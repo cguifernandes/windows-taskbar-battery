@@ -64,13 +64,25 @@ impl Logitech {
     fn probe(&mut self, link: &Link, ep: &Endpoint, index: u8, via_receiver: bool) -> Option<Observation> {
         let id = format!("logi:{:04x}:{}:{:02x}", ep.pid, ep.iface, index);
         let mut result = battery(link, index);
-        if via_receiver && matches!(result, Err(Error::Timeout)) && !self.identities.contains_key(&id) {
-            // A sleeping device times out on the first request but wakes up from it. Retry
-            // once to discover it; known devices aren't woken (it costs them battery).
-            result = battery(link, index);
+        if via_receiver && !self.identities.contains_key(&id) {
+            // A sleeping device times out on the first request but starts waking up from it.
+            // Give it a moment and retry so it gets discovered. Known devices aren't woken
+            // (it costs them battery); they keep their last reading instead.
+            for _ in 0..2 {
+                if !matches!(result, Err(Error::Timeout)) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                result = battery(link, index);
+            }
         }
         let raw = match result {
-            Ok(Raw::NoBattery) => return None,
+            Ok(Raw::NoBattery) => {
+                if cfg!(debug_assertions) {
+                    eprintln!("[{id}] no battery feature");
+                }
+                return None;
+            }
             Ok(raw) => raw,
             Err(Error::Protocol(ERR_UNKNOWN_DEVICE)) if via_receiver => return None, // empty slot
             Err(e) => {
