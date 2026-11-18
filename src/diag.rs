@@ -31,7 +31,7 @@ fn path() -> Option<PathBuf> {
     std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("taskbar-battery").join("diagnostics.log"))
 }
 
-fn header() -> String {
+pub fn header() -> String {
     format!("taskbar-battery {} | {} | {}", env!("CARGO_PKG_VERSION"), crate::settings::windows_version(), std::env::consts::ARCH)
 }
 

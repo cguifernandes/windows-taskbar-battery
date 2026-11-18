@@ -7,11 +7,12 @@
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
 use crate::device::{Reading, Status, Tracker};
-use crate::{bluetooth, delux, diag, headsetcontrol, init_com, logitech, mchose, notify, playstation, render, settings, wide, xbox};
+use crate::{bluetooth, delux, diag, headsetcontrol, init_com, logitech, mchose, notify, playstation, probe, render, settings, wide, xbox};
 use std::cell::RefCell;
 use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::*;
@@ -31,6 +32,7 @@ const CMD_AUTOSTART: usize = 2;
 const CMD_EXIT: usize = 3;
 const CMD_ALERTS: usize = 4;
 const CMD_COPY_DIAGNOSTICS: usize = 5;
+const CMD_PROBE: usize = 6;
 /// WM_POWERBROADCAST: resumed from sleep/hibernate.
 const PBT_APMRESUMEAUTOMATIC: usize = 0x12;
 const CMD_DEVICE_BASE: usize = 100;
@@ -427,12 +429,15 @@ unsafe fn show_menu(hwnd: HWND) {
     let (refresh, autostart, exit) = (wide("Refresh now"), wide("Start with Windows"), wide("Exit"));
     let alerts = wide("Low battery alerts");
     let copy_label = wide("Copy diagnostics");
+    let probe_label = wide("Probe an unsupported device (60 s)");
     let checked = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
     AppendMenuW(menu, MF_STRING, CMD_REFRESH, refresh.as_ptr());
     AppendMenuW(menu, MF_STRING | checked(settings::alerts_enabled()), CMD_ALERTS, alerts.as_ptr());
     AppendMenuW(menu, MF_STRING | checked(settings::autostart_enabled()), CMD_AUTOSTART, autostart.as_ptr());
     AppendMenuW(menu, MF_SEPARATOR, 0, null());
     AppendMenuW(menu, MF_STRING, CMD_COPY_DIAGNOSTICS, copy_label.as_ptr());
+    let probing = if PROBING.load(Ordering::Relaxed) { MF_GRAYED } else { 0 };
+    AppendMenuW(menu, MF_STRING | probing, CMD_PROBE, probe_label.as_ptr());
     AppendMenuW(menu, MF_STRING, CMD_EXIT, exit.as_ptr());
 
     let mut pt: POINT = zeroed();
@@ -448,6 +453,7 @@ unsafe fn show_menu(hwnd: HWND) {
         CMD_AUTOSTART => settings::set_autostart(!settings::autostart_enabled()),
         CMD_ALERTS => settings::set_alerts(!settings::alerts_enabled()),
         CMD_COPY_DIAGNOSTICS => copy_diagnostics(hwnd),
+        CMD_PROBE => start_probe(),
         CMD_EXIT => {
             let widget = with(|a| a.widget);
             if !widget.is_null() {
@@ -463,6 +469,32 @@ unsafe fn show_menu(hwnd: HWND) {
         }
         _ => {}
     }
+}
+
+static PROBING: AtomicBool = AtomicBool::new(false);
+
+/// Runs the device probe in the background, then opens its file in Notepad.
+fn start_probe() {
+    if PROBING.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    std::thread::spawn(|| {
+        init_com();
+        let _ = notify::show(
+            "Probing devices for 60 seconds",
+            "Use the device as usual but don't type. A text file opens when it's done: paste it into a device report on GitHub.",
+        );
+        match probe::run_to_file(probe::LISTEN) {
+            Ok(path) => {
+                let _ = std::process::Command::new("notepad.exe").arg(path).spawn();
+            }
+            Err(e) => {
+                diag::event("probe", format!("failed: {e}"));
+                let _ = notify::show("Probe failed", &e);
+            }
+        }
+        PROBING.store(false, Ordering::Relaxed);
+    });
 }
 
 /// Puts the diagnostics log on the clipboard and confirms with a toast.

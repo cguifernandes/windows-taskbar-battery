@@ -41,7 +41,7 @@ body:
     id: expected
     attributes:
       label: Expected level
-      description: What the vendor app (G HUB, Windows Settings…) shows, if the level is wrong.
+      description: What the vendor app (G HUB, Windows Settings…) shows, if the level is wrong or the device isn't shown.
       placeholder: "G HUB says 80%, taskbar-battery says 70%"
   - type: textarea
     id: once
@@ -51,6 +51,17 @@ body:
         Very helpful, especially if the device isn't shown. Right-click the widget → **Copy diagnostics** and paste here.
         It has no Bluetooth addresses or names, serial numbers or file paths
         (see `%LOCALAPPDATA%\taskbar-battery\diagnostics.log`).
+      render: text
+  - type: textarea
+    id: probe
+    attributes:
+      label: Probe (only if the device isn't shown)
+      description: |
+        Right-click the widget → **Probe an unsupported device (60 s)**. Keep the device on and use it, but don't type.
+        When the text file opens, paste it here, and write the battery level its own app (or LED) showed at that moment
+        in the field above. A second probe at a different level helps a lot.
+        It holds USB ids, product names and raw HID reports; no serial numbers or paths.
+        Full list: [what the probe captures](https://github.com/renanleonel/windows-taskbar-battery#probing-an-unsupported-device).
       render: text
   - type: input
     id: version

@@ -9,6 +9,7 @@ mod logitech;
 mod mchose;
 mod notify;
 mod playstation;
+mod probe;
 mod render;
 mod settings;
 mod widget;
@@ -33,6 +34,13 @@ fn main() {
             settings::register_app_id();
             if let Err(e) = notify::show("Low battery", "G Pro Wireless is at 12%. Time to charge it.") {
                 eprintln!("toast failed: {e}");
+            }
+        }
+        Some("--probe") => {
+            let secs = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(probe::LISTEN.as_secs());
+            match probe::run_to_file(std::time::Duration::from_secs(secs)) {
+                Ok(path) => println!("{}", std::fs::read_to_string(&path).unwrap_or_default()),
+                Err(e) => eprintln!("probe failed: {e}"),
             }
         }
         Some("--list") => logitech::hidpp::list(&hidapi::HidApi::new().expect("hidapi")),

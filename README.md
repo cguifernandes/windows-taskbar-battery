@@ -23,6 +23,7 @@
 - [Using it](#using-it)
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
+  - [Probing an unsupported device](#probing-an-unsupported-device)
 - [Limitations](#limitations)
 - [Uninstall](#uninstall)
 - [Build from source](#build-from-source)
@@ -118,6 +119,7 @@ Right-click the widget to see:
 - **Refresh now:** checks all devices immediately.
 - **Low battery alerts:** a Windows notification when a device drops to 15%, sent once per discharge. It re-arms after the device is charged or climbs above 20%. On by default.
 - **Start with Windows:** turn launching at login on or off. It's on by default.
+- **Probe an unsupported device (60 s):** records what your USB dongles send, for a device report. See [Probing an unsupported device](#probing-an-unsupported-device).
 - **Exit**
 
 ### How often it updates
@@ -224,6 +226,23 @@ If `headsetcontrol.exe` (or `headsetcontrol-windows-x86_64.exe`) is next to `tas
 - Right-click the widget → **Copy diagnostics**, then paste it into a [device report](../../issues/new?template=device_report.yml). It says what each source found and why a device wasn't shown.
 - The log is at `%LOCALAPPDATA%\taskbar-battery\diagnostics.log`, so you can read it first. It holds USB/HID ids, Bluetooth device classes, error codes and the app and Windows versions. It never holds Bluetooth addresses or Bluetooth names, serial numbers or file paths. Bluetooth devices only get a short tag (`bt#395c`) so lines about the same device can be matched up.
 
+### Probing an unsupported device
+
+If your dongle isn't supported, a probe records what it sends so its battery byte can be found without having the device. Right-click the widget → **Probe an unsupported device (60 s)**, keep the device on and use it normally, and **don't type** while it runs. When it's done, the result opens in Notepad. Read it, then paste it into a [device report](../../issues/new?template=device_report.yml) along with the battery level the vendor app (or the device's LED) showed at that moment. It's saved at `%LOCALAPPDATA%\taskbar-battery\probe.txt`.
+
+**What it does:** for 60 seconds it only listens. It never sends commands or writes settings to any device. The one request it makes is a standard read-only HID "get feature report", which asks a device for its current state.
+
+**What the file contains**, for every **USB** HID device (internal keyboards and touchpads included):
+- The USB vendor and product IDs, the manufacturer and product names, and the firmware release number.
+- Each interface's HID usage page and report descriptor, which lists the kinds of reports the device sends.
+- One reading of each feature report.
+- The raw input reports the device sent during the 60 seconds, as hex: how many arrived, which bytes changed, and a few samples.
+- The app version and Windows version.
+
+**What it doesn't contain:** serial numbers, device paths, Bluetooth devices, your user name or any file paths. Standard mouse and keyboard input isn't read at all (Windows doesn't allow it). Some keyboards also send keys over a vendor channel, which the probe does read. That's why you shouldn't type while it runs, and why you should check the file before posting it.
+
+Nothing is sent anywhere. The file stays on your PC until you paste it somewhere yourself.
+
 **The widget overlaps something or is misplaced after a Windows update.**
 - Windows updates can change the taskbar's internals. Please [open an issue](../../issues) with a screenshot and your Windows build (`winver`).
 
@@ -326,6 +345,7 @@ Pushing a tag like `v0.2.0` makes GitHub Actions build the exe and publish it as
 Issues and PRs are welcome, especially:
 
 - **Device reports:** tell us what works and what doesn't. Include the output of right-click → **Copy diagnostics**.
+- **Unsupported dongles:** right-click → **Probe an unsupported device (60 s)** records what the dongle sends ([what it captures](#probing-an-unsupported-device)). Paste the file into a device report with the battery level the vendor app showed; that's often enough to add the device.
 - **New brands:** add a module next to `logitech/` and `bluetooth.rs` that returns a list of `device::Observation`s. [HeadsetControl](https://github.com/Sapd/HeadsetControl) and [OpenRazer](https://github.com/openrazer/openrazer) document many headset and Razer protocols.
 - **Multi-monitor taskbars**, Windows 10 testing, and translations.
 
