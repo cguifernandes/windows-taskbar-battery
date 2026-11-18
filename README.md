@@ -48,6 +48,7 @@
 | **Razer mice and keyboards** | 38 wireless mouse models (Viper, DeathAdder, Basilisk, Naga, Cobra, Pro Click, Orochi V2…) and the wireless BlackWidow V3/V4, DeathStalker V2 Pro and Joro keyboards, over the receiver or a cable | Razer's own battery and charging queries, as Synapse uses them |
 | **SteelSeries mice** | Aerox 3/5/9 Wireless, Prime (Mini) Wireless, Rival 3 Wireless (Gen 2), Rival 650 Wireless, over the dongle or a cable | The mouse's battery query (charging detected) |
 | **Corsair mice and keyboards** | Harpoon, Dark Core, Ironclaw, M65/M75, Sabre, Scimitar, K57, K70 Core TKL, K100 Air… on a SLIPSTREAM dongle | The dongle's battery query, without taking the device from iCUE (charging state not detected) |
+| **Other USB devices** | Any dongle or device that reports its battery the standard HID way (a Battery Strength field) | Read straight from the device's own HID description |
 | **MCHOSE headsets** | V9 Pro (291D:385D) and X9 (3837:6045) over their 2.4 GHz dongle | The dongle's battery query, the one M HUB uses (charging state not detected) |
 | **Other headsets** via [HeadsetControl](#other-headsets-headsetcontrol) | SteelSeries Arctis, HyperX Cloud, Corsair, Audeze, Logitech G and more | HeadsetControl, if installed (optional) |
 
@@ -69,6 +70,7 @@
 | Razer mice and keyboards | receiver, cable | ⚠️ implemented, not yet tested on hardware |
 | SteelSeries mice | dongle, cable | ⚠️ implemented, not yet tested on hardware |
 | Corsair mice and keyboards (SLIPSTREAM) | dongle | ⚠️ implemented, not yet tested on hardware |
+| Standard HID battery (other USB devices) | USB | ⚠️ implemented, not yet tested on hardware |
 
 Using a device that isn't listed? Please [open a device report](../../issues/new?template=device_report.yml) saying whether it works, so it can be added to the table.
 

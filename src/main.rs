@@ -7,6 +7,7 @@ mod delux;
 mod device;
 mod diag;
 mod headsetcontrol;
+mod hid_battery;
 mod logitech;
 mod mchose;
 mod mchose_mouse;
@@ -66,6 +67,7 @@ fn main() {
             obs.extend(corsair_slipstream::CorsairSlipstream::default().scan(&api));
             obs.extend(razer::Razer::default().scan(&api));
             obs.extend(steelseries::SteelSeries::default().scan(&api));
+            obs.extend(hid_battery::HidBattery::default().scan(&api));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
             match headsetcontrol::find() {
