@@ -43,6 +43,7 @@
 | **Xbox controllers** | Xbox One / Series and other XInput controllers, over the Xbox Wireless adapter, Bluetooth, or USB | Windows.Gaming.Input battery report (exact capacity) |
 | **PlayStation controllers** | DualSense, DualSense Edge, DualShock 4, over USB or Bluetooth | The controller's own input report |
 | **Delux mice** | Delux and other 2.4 GHz mice on the Xenta dongle (USB ID 1D57:FA60) | The dongle's status report (charging state not detected) |
+| **Corsair headsets** | HS80 MAX, VOID WIRELESS V2, VIRTUOSO MAX over their dongle | The dongle's battery query, as iCUE does (charging state not detected) |
 | **MCHOSE headsets** | V9 Pro (291D:385D) and X9 (3837:6045) over their 2.4 GHz dongle | The dongle's battery query, the one M HUB uses (charging state not detected) |
 | **Other headsets** via [HeadsetControl](#other-headsets-headsetcontrol) | SteelSeries Arctis, HyperX Cloud, Corsair, Audeze, Logitech G and more | HeadsetControl, if installed (optional) |
 
@@ -58,6 +59,7 @@
 | Xbox / PlayStation controllers | all | ⚠️ implemented, not yet tested on hardware |
 | HeadsetControl headsets | USB dongle | ⚠️ implemented, not yet tested on hardware |
 | MCHOSE V9 Pro / X9 (headset) | 2.4 GHz dongle | ⚠️ implemented, not yet tested on hardware |
+| Corsair HS80 MAX / VOID WIRELESS V2 / VIRTUOSO MAX | dongle | ⚠️ implemented, not yet tested on hardware |
 
 Using a device that isn't listed? Please [open a device report](../../issues/new?template=device_report.yml) saying whether it works, so it can be added to the table.
 
@@ -73,7 +75,7 @@ It runs as a separate program every 60 s and isn't bundled. Its GPL license does
 
 ### Not supported (yet)
 
-Razer, Corsair, and other **2.4 GHz mouse/keyboard dongles** each use their own undocumented protocol. They will show up if they're connected over Bluetooth, but not through their USB dongles. See [Contributing](#contributing) if you want to add one. For many of them, [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) already works.
+Razer, Corsair mice and keyboards, and other **2.4 GHz mouse/keyboard dongles** each use their own undocumented protocol. They will show up if they're connected over Bluetooth, but not through their USB dongles. See [Contributing](#contributing) if you want to add one. For many of them, [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) already works.
 
 ---
 

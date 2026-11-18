@@ -32,6 +32,16 @@ impl Kind {
     }
 }
 
+/// Whether a native source (not HeadsetControl) already reports the device on USB product id
+/// `pid`, so HeadsetControl doesn't list it twice. Native ids are `<source>:<pid hex>[:…]`.
+pub fn read_natively(observations: &[Observation], pid: u16) -> bool {
+    let pid = format!("{pid:04x}");
+    observations.iter().any(|o| {
+        let mut parts = o.id.split(':');
+        matches!(parts.next(), Some("logi" | "mchose" | "corsair")) && parts.next() == Some(pid.as_str())
+    })
+}
+
 /// What a source saw for one device during one scan.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum State {
@@ -140,6 +150,17 @@ mod tests {
 
     fn obs(state: State) -> Observation {
         Observation { id: "x".into(), name: Some("Mouse".into()), kind: Some(Kind::Mouse), state }
+    }
+
+    #[test]
+    fn read_natively_matches_source_and_pid() {
+        let with_id = |id: &str| Observation { id: id.into(), ..obs(State::Off) };
+        let o = [with_id("logi:0ab5:3:ff"), with_id("mchose:385d"), with_id("corsair:0a97"), with_id("hc:1b1c:2a08")];
+        assert!(read_natively(&o, 0x0AB5));
+        assert!(read_natively(&o, 0x385D));
+        assert!(read_natively(&o, 0x0A97));
+        assert!(!read_natively(&o, 0x2A08)); // only HeadsetControl has it
+        assert!(!read_natively(&o, 0x0AB6));
     }
 
     #[test]

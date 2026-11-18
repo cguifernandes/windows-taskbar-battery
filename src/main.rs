@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bluetooth;
+mod corsair;
 mod delux;
 mod device;
 mod diag;
@@ -56,12 +57,13 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(2500));
             obs.extend(delux.scan(&api));
             obs.extend(mchose::Mchose::default().scan(&api));
+            obs.extend(corsair::Corsair::default().scan(&api));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
             match headsetcontrol::find() {
                 Some(exe) => {
                     eprintln!("[headsetcontrol] using {}", exe.display());
-                    let hc = headsetcontrol::scan(&exe, |pid| logitech::reports_pid(&obs, pid) || mchose::reports_pid(&obs, pid));
+                    let hc = headsetcontrol::scan(&exe, |pid| device::read_natively(&obs, pid));
                     obs.extend(hc);
                 }
                 None => eprintln!("[headsetcontrol] not found (optional)"),

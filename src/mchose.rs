@@ -93,13 +93,6 @@ impl Mchose {
     }
 }
 
-/// Whether these observations include an MCHOSE dongle on USB product id `pid`
-/// (used to avoid listing the same headset twice via HeadsetControl).
-pub fn reports_pid(observations: &[Observation], pid: u16) -> bool {
-    let id = format!("mchose:{pid:04x}");
-    observations.iter().any(|o| o.id == id)
-}
-
 fn observation(d: &Dongle, state: State) -> Observation {
     Observation { id: d.key.clone(), name: Some(d.name.into()), kind: Some(Kind::Headset), state }
 }
