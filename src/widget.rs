@@ -7,7 +7,7 @@
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
 use crate::device::{Reading, Status, Tracker};
-use crate::{bluetooth, delux, diag, headsetcontrol, init_com, logitech, notify, playstation, render, settings, wide, xbox};
+use crate::{bluetooth, delux, diag, headsetcontrol, init_com, logitech, mchose, notify, playstation, render, settings, wide, xbox};
 use std::cell::RefCell;
 use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
@@ -176,6 +176,7 @@ fn worker(controller: usize, rx: Receiver<()>) {
     };
     let mut logi = logitech::Logitech::new();
     let mut delux = delux::Delux::default();
+    let mut mchose = mchose::Mchose::default();
     let mut tracker = Tracker::default();
     let mut alerts = notify::LowBatteryAlerts::default();
     let mut bt = Vec::new();
@@ -187,11 +188,12 @@ fn worker(controller: usize, rx: Receiver<()>) {
         let mut obs = logi.scan(&api);
         obs.extend(playstation::scan(&api));
         obs.extend(delux.scan(&api));
+        obs.extend(mchose.scan(&api));
         obs.extend(xbox::scan());
         if forced || last_bt.is_none_or(|t| t.elapsed() >= POLL_BLUETOOTH) {
             bt = bluetooth::scan();
             if let Some(exe) = headsetcontrol::find() {
-                bt.extend(headsetcontrol::scan(&exe, |pid| logitech::reports_pid(&obs, pid)));
+                bt.extend(headsetcontrol::scan(&exe, |pid| logitech::reports_pid(&obs, pid) || mchose::reports_pid(&obs, pid)));
             }
             last_bt = Some(Instant::now());
         }

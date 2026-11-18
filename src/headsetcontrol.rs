@@ -59,7 +59,7 @@ pub fn find() -> Option<PathBuf> {
 }
 
 /// Runs HeadsetControl and returns its headsets. `skip_pid` filters out devices another
-/// source already reports (e.g. Logitech headsets read over HID++).
+/// source already reports (e.g. Logitech headsets read over HID++, MCHOSE dongles).
 pub fn scan(exe: &Path, skip_pid: impl Fn(u16) -> bool) -> Vec<Observation> {
     let json = match run(exe) {
         Ok(json) => json,
@@ -83,7 +83,7 @@ pub fn scan(exe: &Path, skip_pid: impl Fn(u16) -> bool) -> Vec<Observation> {
             let pid = parse_hex(&d.id_product)?;
             let key = format!("hc:{}:{pid:04x}", d.id_vendor.trim_start_matches("0x"));
             if skip_pid(pid) {
-                diag::event(&key, "skipped: already read over HID++");
+                diag::event(&key, "skipped: already read natively");
                 return None;
             }
             let Some(battery) = d.battery else {

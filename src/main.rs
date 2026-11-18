@@ -6,6 +6,7 @@ mod device;
 mod diag;
 mod headsetcontrol;
 mod logitech;
+mod mchose;
 mod notify;
 mod playstation;
 mod render;
@@ -46,12 +47,13 @@ fn main() {
             let _ = xbox::scan(); // first call only starts controller enumeration
             std::thread::sleep(std::time::Duration::from_millis(2500));
             obs.extend(delux.scan(&api));
+            obs.extend(mchose::Mchose::default().scan(&api));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
             match headsetcontrol::find() {
                 Some(exe) => {
                     eprintln!("[headsetcontrol] using {}", exe.display());
-                    let hc = headsetcontrol::scan(&exe, |pid| logitech::reports_pid(&obs, pid));
+                    let hc = headsetcontrol::scan(&exe, |pid| logitech::reports_pid(&obs, pid) || mchose::reports_pid(&obs, pid));
                     obs.extend(hc);
                 }
                 None => eprintln!("[headsetcontrol] not found (optional)"),
