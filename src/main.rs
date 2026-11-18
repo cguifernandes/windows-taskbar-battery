@@ -2,6 +2,7 @@
 
 mod bluetooth;
 mod corsair;
+mod corsair_slipstream;
 mod delux;
 mod device;
 mod diag;
@@ -62,6 +63,7 @@ fn main() {
             obs.extend(mchose::Mchose::default().scan(&api));
             obs.extend(mchose_mouse::MchoseMice::default().scan(&api));
             obs.extend(corsair::Corsair::default().scan(&api));
+            obs.extend(corsair_slipstream::CorsairSlipstream::default().scan(&api));
             obs.extend(razer::Razer::default().scan(&api));
             obs.extend(steelseries::SteelSeries::default().scan(&api));
             obs.extend(xbox::scan());
