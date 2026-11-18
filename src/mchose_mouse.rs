@@ -94,12 +94,7 @@ impl MchoseMice {
                 };
                 // The feature report's length, from the descriptor; collections without a
                 // long enough report 0x11 aren't the status channel.
-                let mut desc = [0u8; hidapi::MAX_REPORT_DESCRIPTOR_SIZE];
-                let len = dev
-                    .get_report_descriptor(&mut desc)
-                    .ok()
-                    .and_then(|n| probe::feature_len(&desc[..n], REPORT_ID))
-                    .unwrap_or(MIN_LEN);
+                let len = probe::descriptor(&dev).and_then(|d| probe::feature_len(&d, REPORT_ID)).unwrap_or(MIN_LEN);
                 if len < MIN_LEN {
                     continue;
                 }

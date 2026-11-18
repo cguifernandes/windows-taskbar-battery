@@ -12,6 +12,7 @@ mod mchose_mouse;
 mod notify;
 mod playstation;
 mod probe;
+mod razer;
 mod render;
 mod settings;
 mod widget;
@@ -60,6 +61,7 @@ fn main() {
             obs.extend(mchose::Mchose::default().scan(&api));
             obs.extend(mchose_mouse::MchoseMice::default().scan(&api));
             obs.extend(corsair::Corsair::default().scan(&api));
+            obs.extend(razer::Razer::default().scan(&api));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
             match headsetcontrol::find() {

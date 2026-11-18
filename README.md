@@ -45,6 +45,7 @@
 | **Delux mice** | Delux and other 2.4 GHz mice on the Xenta dongle (USB ID 1D57:FA60) | The dongle's status report (charging state not detected) |
 | **MCHOSE mice** | A7, A7 V2, L7, M7, K7 Ultra and other models on M HUB's classic protocol, over the receiver or a cable | The receiver's status report, the one M HUB uses (charging detected). Newer models (A7 V3, K7 V2, K5…) aren't supported yet |
 | **Corsair headsets** | HS80 MAX, VOID WIRELESS V2, VIRTUOSO MAX, and the older VOID / VOID PRO / VOID RGB ELITE / HS70 wireless headsets, over their dongle | The dongle's battery query, as iCUE does (charging detected on the older VOID family only) |
+| **Razer mice** | 38 wireless models (Viper, DeathAdder, Basilisk, Naga, Cobra, Pro Click, Orochi V2…), over the receiver or a cable | Razer's own battery and charging queries, as Synapse uses them |
 | **MCHOSE headsets** | V9 Pro (291D:385D) and X9 (3837:6045) over their 2.4 GHz dongle | The dongle's battery query, the one M HUB uses (charging state not detected) |
 | **Other headsets** via [HeadsetControl](#other-headsets-headsetcontrol) | SteelSeries Arctis, HyperX Cloud, Corsair, Audeze, Logitech G and more | HeadsetControl, if installed (optional) |
 
@@ -63,6 +64,7 @@
 | MCHOSE mice (classic protocol) | 2.4 GHz receiver, cable | ⚠️ implemented, not yet tested on hardware |
 | Corsair HS80 MAX / VOID WIRELESS V2 / VIRTUOSO MAX | dongle | ⚠️ implemented, not yet tested on hardware |
 | Corsair VOID / VOID PRO / VOID RGB ELITE / HS70 Wireless | dongle | ⚠️ implemented, not yet tested on hardware |
+| Razer mice | receiver, cable | ⚠️ implemented, not yet tested on hardware |
 
 Using a device that isn't listed? Please [open a device report](../../issues/new?template=device_report.yml) saying whether it works, so it can be added to the table.
 
@@ -78,7 +80,7 @@ It runs as a separate program every 60 s and isn't bundled. Its GPL license does
 
 ### Not supported (yet)
 
-Razer, Corsair mice and keyboards, and other **2.4 GHz mouse/keyboard dongles** each use their own undocumented protocol. They will show up if they're connected over Bluetooth, but not through their USB dongles. See [Contributing](#contributing) if you want to add one. For many of them, [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) already works.
+Razer keyboards and headsets, Corsair mice and keyboards, and other **2.4 GHz mouse/keyboard dongles** each use their own undocumented protocol. They will show up if they're connected over Bluetooth, but not through their USB dongles. See [Contributing](#contributing) if you want to add one. For many of them, [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) already works.
 
 ---
 
@@ -364,6 +366,7 @@ Please run `cargo clippy --all-targets -- -D warnings` and `cargo test` before o
 - [Solaar](https://github.com/pwr-Solaar/Solaar): the reference for Logitech's HID++ protocol.
 - [HeadsetControl](https://github.com/Sapd/HeadsetControl): headset protocol research.
 - [MchoseBatteryTray](https://github.com/HifumiDaisuki01/MchoseBatteryTray): the MCHOSE mouse status protocol.
+- [OpenRazer](https://github.com/openrazer/openrazer): the Razer protocol and model table.
 - [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor): inspiration for the taskbar placement technique.
 
 This project isn't affiliated with or endorsed by Logitech, Razer, Corsair, SteelSeries, MCHOSE, Delux, Sony, Apple, or Microsoft. All trademarks belong to their owners.
