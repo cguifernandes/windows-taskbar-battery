@@ -15,6 +15,7 @@ mod probe;
 mod razer;
 mod render;
 mod settings;
+mod steelseries;
 mod widget;
 mod xbox;
 
@@ -62,6 +63,7 @@ fn main() {
             obs.extend(mchose_mouse::MchoseMice::default().scan(&api));
             obs.extend(corsair::Corsair::default().scan(&api));
             obs.extend(razer::Razer::default().scan(&api));
+            obs.extend(steelseries::SteelSeries::default().scan(&api));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());
             match headsetcontrol::find() {

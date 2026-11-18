@@ -7,7 +7,7 @@
 //! - A worker thread scans devices and posts WM_APP_UPDATE to the controller.
 
 use crate::device::{Reading, Status, Tracker};
-use crate::{bluetooth, corsair, delux, device, diag, headsetcontrol, init_com, logitech, mchose, mchose_mouse, notify, playstation, probe, razer, render, settings, wide, xbox};
+use crate::{bluetooth, corsair, delux, device, diag, headsetcontrol, init_com, logitech, mchose, mchose_mouse, notify, playstation, probe, razer, render, settings, steelseries, wide, xbox};
 use std::cell::RefCell;
 use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
@@ -182,6 +182,7 @@ fn worker(controller: usize, rx: Receiver<()>) {
     let mut mchose_mice = mchose_mouse::MchoseMice::default();
     let mut corsair = corsair::Corsair::default();
     let mut razer = razer::Razer::default();
+    let mut steelseries = steelseries::SteelSeries::default();
     let mut tracker = Tracker::default();
     let mut alerts = notify::LowBatteryAlerts::default();
     let mut bt = Vec::new();
@@ -197,6 +198,7 @@ fn worker(controller: usize, rx: Receiver<()>) {
         obs.extend(mchose_mice.scan(&api));
         obs.extend(corsair.scan(&api));
         obs.extend(razer.scan(&api));
+        obs.extend(steelseries.scan(&api));
         obs.extend(xbox::scan());
         if forced || last_bt.is_none_or(|t| t.elapsed() >= POLL_BLUETOOTH) {
             bt = bluetooth::scan();

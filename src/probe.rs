@@ -141,6 +141,11 @@ pub fn descriptor(dev: &HidDevice) -> Option<Vec<u8>> {
     dev.get_report_descriptor(&mut buf).ok().map(|n| buf[..n].to_vec())
 }
 
+/// Whether a report descriptor declares any output report.
+pub fn has_output(desc: &[u8]) -> bool {
+    report_layout(desc).keys().any(|(k, _)| *k == Kind::Output)
+}
+
 /// Length in bytes (id included) of feature report `id`, from a report descriptor.
 pub fn feature_len(desc: &[u8], id: u8) -> Option<usize> {
     report_layout(desc).get(&(Kind::Feature, id)).map(|bits| bits.div_ceil(8) as usize)
