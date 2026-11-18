@@ -44,7 +44,7 @@
 | **PlayStation controllers** | DualSense, DualSense Edge, DualShock 4, over USB or Bluetooth | The controller's own input report |
 | **Delux mice** | Delux and other 2.4 GHz mice on the Xenta dongle (USB ID 1D57:FA60) | The dongle's status report (charging state not detected) |
 | **MCHOSE mice** | A7, A7 V2, L7, M7, K7 Ultra and other models on M HUB's classic protocol, over the receiver or a cable | The receiver's status report, the one M HUB uses (charging detected). Newer models (A7 V3, K7 V2, K5…) aren't supported yet |
-| **Corsair headsets** | HS80 MAX, VOID WIRELESS V2, VIRTUOSO MAX over their dongle | The dongle's battery query, as iCUE does (charging state not detected) |
+| **Corsair headsets** | HS80 MAX, VOID WIRELESS V2, VIRTUOSO MAX, and the older VOID / VOID PRO / VOID RGB ELITE / HS70 wireless headsets, over their dongle | The dongle's battery query, as iCUE does (charging detected on the older VOID family only) |
 | **MCHOSE headsets** | V9 Pro (291D:385D) and X9 (3837:6045) over their 2.4 GHz dongle | The dongle's battery query, the one M HUB uses (charging state not detected) |
 | **Other headsets** via [HeadsetControl](#other-headsets-headsetcontrol) | SteelSeries Arctis, HyperX Cloud, Corsair, Audeze, Logitech G and more | HeadsetControl, if installed (optional) |
 
@@ -62,6 +62,7 @@
 | MCHOSE V9 Pro / X9 (headset) | 2.4 GHz dongle | ⚠️ implemented, not yet tested on hardware |
 | MCHOSE mice (classic protocol) | 2.4 GHz receiver, cable | ⚠️ implemented, not yet tested on hardware |
 | Corsair HS80 MAX / VOID WIRELESS V2 / VIRTUOSO MAX | dongle | ⚠️ implemented, not yet tested on hardware |
+| Corsair VOID / VOID PRO / VOID RGB ELITE / HS70 Wireless | dongle | ⚠️ implemented, not yet tested on hardware |
 
 Using a device that isn't listed? Please [open a device report](../../issues/new?template=device_report.yml) saying whether it works, so it can be added to the table.
 
@@ -365,7 +366,7 @@ Please run `cargo clippy --all-targets -- -D warnings` and `cargo test` before o
 - [MchoseBatteryTray](https://github.com/HifumiDaisuki01/MchoseBatteryTray): the MCHOSE mouse status protocol.
 - [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor): inspiration for the taskbar placement technique.
 
-This project isn't affiliated with or endorsed by Logitech, Apple, or Microsoft. All trademarks belong to their owners.
+This project isn't affiliated with or endorsed by Logitech, Razer, Corsair, SteelSeries, MCHOSE, Delux, Sony, Apple, or Microsoft. All trademarks belong to their owners.
 
 ## License
 
