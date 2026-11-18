@@ -8,6 +8,7 @@ mod diag;
 mod headsetcontrol;
 mod logitech;
 mod mchose;
+mod mchose_mouse;
 mod notify;
 mod playstation;
 mod probe;
@@ -57,6 +58,7 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(2500));
             obs.extend(delux.scan(&api));
             obs.extend(mchose::Mchose::default().scan(&api));
+            obs.extend(mchose_mouse::MchoseMice::default().scan(&api));
             obs.extend(corsair::Corsair::default().scan(&api));
             obs.extend(xbox::scan());
             obs.extend(bluetooth::scan());

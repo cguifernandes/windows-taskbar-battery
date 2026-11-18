@@ -43,6 +43,7 @@
 | **Xbox controllers** | Xbox One / Series and other XInput controllers, over the Xbox Wireless adapter, Bluetooth, or USB | Windows.Gaming.Input battery report (exact capacity) |
 | **PlayStation controllers** | DualSense, DualSense Edge, DualShock 4, over USB or Bluetooth | The controller's own input report |
 | **Delux mice** | Delux and other 2.4 GHz mice on the Xenta dongle (USB ID 1D57:FA60) | The dongle's status report (charging state not detected) |
+| **MCHOSE mice** | A7, A7 V2, L7, M7, K7 Ultra and other models on M HUB's classic protocol, over the receiver or a cable | The receiver's status report, the one M HUB uses (charging detected). Newer models (A7 V3, K7 V2, K5…) aren't supported yet |
 | **Corsair headsets** | HS80 MAX, VOID WIRELESS V2, VIRTUOSO MAX over their dongle | The dongle's battery query, as iCUE does (charging state not detected) |
 | **MCHOSE headsets** | V9 Pro (291D:385D) and X9 (3837:6045) over their 2.4 GHz dongle | The dongle's battery query, the one M HUB uses (charging state not detected) |
 | **Other headsets** via [HeadsetControl](#other-headsets-headsetcontrol) | SteelSeries Arctis, HyperX Cloud, Corsair, Audeze, Logitech G and more | HeadsetControl, if installed (optional) |
@@ -59,6 +60,7 @@
 | Xbox / PlayStation controllers | all | ⚠️ implemented, not yet tested on hardware |
 | HeadsetControl headsets | USB dongle | ⚠️ implemented, not yet tested on hardware |
 | MCHOSE V9 Pro / X9 (headset) | 2.4 GHz dongle | ⚠️ implemented, not yet tested on hardware |
+| MCHOSE mice (classic protocol) | 2.4 GHz receiver, cable | ⚠️ implemented, not yet tested on hardware |
 | Corsair HS80 MAX / VOID WIRELESS V2 / VIRTUOSO MAX | dongle | ⚠️ implemented, not yet tested on hardware |
 
 Using a device that isn't listed? Please [open a device report](../../issues/new?template=device_report.yml) saying whether it works, so it can be added to the table.
@@ -360,6 +362,7 @@ Please run `cargo clippy --all-targets -- -D warnings` and `cargo test` before o
 - [Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor) by krisgfx9: the original inspiration for this project, and a much broader tool (C++, dozens of brands). If your device isn't supported here, try it.
 - [Solaar](https://github.com/pwr-Solaar/Solaar): the reference for Logitech's HID++ protocol.
 - [HeadsetControl](https://github.com/Sapd/HeadsetControl): headset protocol research.
+- [MchoseBatteryTray](https://github.com/HifumiDaisuki01/MchoseBatteryTray): the MCHOSE mouse status protocol.
 - [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor): inspiration for the taskbar placement technique.
 
 This project isn't affiliated with or endorsed by Logitech, Apple, or Microsoft. All trademarks belong to their owners.
