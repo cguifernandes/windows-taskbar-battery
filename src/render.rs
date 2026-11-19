@@ -17,11 +17,11 @@ const STALE_OPACITY: u32 = 130;
 /// Newer glyph (clearer at small sizes); older Segoe Fluent Icons versions only have the pair.
 const EARBUD_SINGLE: &str = "\u{F27C}";
 const EARBUD_PAIR: &str = "\u{F4C0}";
-/// From Segoe UI Symbol: Fluent's gamepad (E7FC) is a flat rounded box at 15 px that reads
-/// as a keyboard.
-const GAMEPAD: &str = "\u{1F3AE}";
+/// Drawn from Segoe MDL2 Assets: the same code point in Segoe Fluent Icons is a flat rounded
+/// box at 15 px that reads as a keyboard; the MDL2 one has grips.
+const GAMEPAD: &str = "\u{E7FC}";
 
-/// Segoe Fluent Icons glyph per device kind (the gamepad comes from Segoe UI Symbol).
+/// Segoe Fluent Icons glyph per device kind (the gamepad is drawn from Segoe MDL2 Assets).
 fn icon(kind: Kind) -> &'static str {
     match kind {
         Kind::Headset => "\u{E7F6}",
@@ -99,7 +99,7 @@ pub unsafe fn draw(hwnd: HWND, items: &[(Kind, Status)], dpi: u32, layout: Layou
     ReleaseDC(null_mut(), screen);
     let text_font = font("Segoe UI", -s(12));
     let icon_font = font("Segoe Fluent Icons", -s(15));
-    let symbol_font = font("Segoe UI Symbol", -s(15));
+    let symbol_font = font("Segoe MDL2 Assets", -s(15));
     let gamepad = wide(GAMEPAD);
     let font_of = |seg: &Seg| match (seg.icon, seg.text == gamepad) {
         (false, _) => text_font,
